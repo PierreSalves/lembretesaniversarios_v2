@@ -53,25 +53,34 @@ class _HomePageState extends State<HomePage> {
     });
   }
 
-  // Função central: Compartilhar no WhatsApp
+  // Função para compartilhar no WhatsApp
   Future<void> _compartilharWhatsapp(Aniversariante item) async {
     final String texto = "${item.mensagemCustomizada}\n\n- Parabéns, ${item.nome}! 🎂🎉";
 
     if (item.caminhoFoto != null && File(item.caminhoFoto!).existsSync()) {
-      // Compartilha Imagem + Texto
-      await Share.shareXFiles(
-        [XFile(item.caminhoFoto!)],
-        text: texto,
-      );
+      await Share.shareXFiles([XFile(item.caminhoFoto!)], text: texto);
     } else {
-      // Compartilha Apenas Texto
       await Share.share(texto);
     }
   }
 
+  // Função para Deletar
   void _deletar(int id) async {
     await DBHelper.delete(id);
     _carregarDados();
+  }
+
+  // ✏️ NOVA FUNÇÃO: Abre a tela de cadastro em MODO DE EDIÇÃO
+  void _editar(Aniversariante item) async {
+    final res = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => CadastroPage(aniversariante: item),
+      ),
+    );
+    if (res == true) {
+      _carregarDados(); // Recarrega a lista se alterou algo
+    }
   }
 
   @override
@@ -134,7 +143,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // Card Especial com botão grande para enviar no WhatsApp
+  // Card Especial de Hoje com ícone de lápis
   Widget _buildCardHoje(Aniversariante item) {
     return Card(
       color: Colors.green[50],
@@ -158,6 +167,10 @@ class _HomePageState extends State<HomePage> {
                 style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
               subtitle: Text("Hoje! (${item.dia.toString().padLeft(2, '0')}/${item.mes.toString().padLeft(2, '0')})"),
+              trailing: IconButton(
+                icon: const Icon(Icons.edit, color: Colors.blue), // ✏️ Botão Editar no Card de Hoje
+                onPressed: () => _editar(item),
+              ),
             ),
             const SizedBox(height: 8),
             ElevatedButton.icon(
@@ -176,7 +189,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // Card Normal para a lista
+  // Card Normal com o ícone de Editar
   Widget _buildCardNormal(Aniversariante item) {
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4),
@@ -193,6 +206,10 @@ class _HomePageState extends State<HomePage> {
             IconButton(
               icon: const Icon(Icons.share, color: Colors.green),
               onPressed: () => _compartilharWhatsapp(item),
+            ),
+            IconButton(
+              icon: const Icon(Icons.edit, color: Colors.blue), // ✏️ Botão Editar
+              onPressed: () => _editar(item),
             ),
             IconButton(
               icon: const Icon(Icons.delete, color: Colors.red),
