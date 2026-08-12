@@ -4,9 +4,11 @@ import 'package:share_plus/share_plus.dart';
 import 'database/db_helper.dart';
 import 'models/aniversariante.dart';
 import 'screens/cadastro_page.dart';
+import 'services/notification_service.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await NotificationService.init();
   runApp(const MeuApp());
 }
 
@@ -41,19 +43,48 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    _carregarDados();
+    _inicializarTela();
   }
 
+  /// Fluxo de inicialização e atualização da tela
+  Future<void> _inicializarTela() async {
+    await _carregarDados();
+    await _cancelarLembretesDiarios();
+    await _agendarNotificacoes();
+  }
+
+  /// SRP 1: Responsável APENAS por buscar os dados no banco SQLite e atualizar o estado da UI.
   Future<void> _carregarDados() async {
     setState(() => _carregando = true);
     final dados = await DBHelper.queryAll();
+    final lista = dados.map((item) => Aniversariante.fromMap(item)).toList();
+
     setState(() {
-      _lista = dados.map((item) => Aniversariante.fromMap(item)).toList();
+      _lista = lista;
       _carregando = false;
     });
   }
 
-  // Função para compartilhar no WhatsApp
+  /// SRP 2: Responsável APENAS por cancelar todas as notificações ativas/pendentes do sistema.
+  Future<void> _cancelarLembretesDiarios() async {
+    await NotificationService.cancelarTodasNotificacoes();
+  }
+
+  /// SRP 3: Responsável APENAS por reagendar as notificações (2h em 2h, das 06:00 às 20:00) para cada aniversariante.
+  Future<void> _agendarNotificacoes() async {
+    for (var item in _lista) {
+      if (item.id != null) {
+        await NotificationService.agendarNotificacoesAniversario(
+          idBase: item.id!,
+          nome: item.nome,
+          dia: item.dia,
+          mes: item.mes,
+        );
+      }
+    }
+  }
+
+  /// Função para compartilhar mensagem no WhatsApp
   Future<void> _compartilharWhatsapp(Aniversariante item) async {
     final String texto = "${item.mensagemCustomizada}\n\n- Parabéns, ${item.nome}! 🎂🎉";
 
@@ -64,13 +95,13 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  // Função para Deletar
+  /// Função para Deletar um aniversariante
   void _deletar(int id) async {
     await DBHelper.delete(id);
-    _carregarDados();
+    await _inicializarTela();
   }
 
-  // ✏️ NOVA FUNÇÃO: Abre a tela de cadastro em MODO DE EDIÇÃO
+  /// Abre a tela de cadastro em MODO DE EDIÇÃO
   void _editar(Aniversariante item) async {
     final res = await Navigator.push(
       context,
@@ -79,14 +110,15 @@ class _HomePageState extends State<HomePage> {
       ),
     );
     if (res == true) {
-      _carregarDados(); // Recarrega a lista se alterou algo
+      await _inicializarTela();
     }
   }
 
   @override
   Widget build(BuildContext context) {
     final hoje = DateTime.now();
-    final aniversariantesHoje = _lista.where((a) => a.dia == hoje.day && a.mes == hoje.month).toList();
+    final aniversariantesHoje =
+        _lista.where((a) => a.dia == hoje.day && a.mes == hoje.month).toList();
 
     return Scaffold(
       appBar: AppBar(
@@ -111,7 +143,11 @@ class _HomePageState extends State<HomePage> {
                     if (aniversariantesHoje.isNotEmpty) ...[
                       const Text(
                         '🎉 Aniversariante(s) de Hoje!',
-                        style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold, color: Colors.green),
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.green,
+                        ),
                       ),
                       const SizedBox(height: 8),
                       ...aniversariantesHoje.map((item) => _buildCardHoje(item)),
@@ -133,7 +169,9 @@ class _HomePageState extends State<HomePage> {
             context,
             MaterialPageRoute(builder: (context) => const CadastroPage()),
           );
-          if (res == true) _carregarDados();
+          if (res == true) {
+            await _inicializarTela();
+          }
         },
         backgroundColor: Colors.blueGrey[800],
         foregroundColor: Colors.white,
@@ -143,7 +181,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // Card Especial de Hoje com ícone de lápis
+  // Card Especial para Aniversariantes de Hoje
   Widget _buildCardHoje(Aniversariante item) {
     return Card(
       color: Colors.green[50],
@@ -159,16 +197,24 @@ class _HomePageState extends State<HomePage> {
             ListTile(
               leading: CircleAvatar(
                 radius: 30,
-                backgroundImage: item.caminhoFoto != null ? FileImage(File(item.caminhoFoto!)) : null,
-                child: item.caminhoFoto == null ? const Icon(Icons.person) : null,
+                backgroundImage: item.caminhoFoto != null &&
+                        File(item.caminhoFoto!).existsSync()
+                    ? FileImage(File(item.caminhoFoto!))
+                    : null,
+                child: item.caminhoFoto == null ||
+                        !File(item.caminhoFoto!).existsSync()
+                    ? const Icon(Icons.person)
+                    : null,
               ),
               title: Text(
                 item.nome,
                 style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
               ),
-              subtitle: Text("Hoje! (${item.dia.toString().padLeft(2, '0')}/${item.mes.toString().padLeft(2, '0')})"),
+              subtitle: Text(
+                "Hoje! (${item.dia.toString().padLeft(2, '0')}/${item.mes.toString().padLeft(2, '0')})",
+              ),
               trailing: IconButton(
-                icon: const Icon(Icons.edit, color: Colors.blue), // ✏️ Botão Editar no Card de Hoje
+                icon: const Icon(Icons.edit, color: Colors.blue),
                 onPressed: () => _editar(item),
               ),
             ),
@@ -181,7 +227,10 @@ class _HomePageState extends State<HomePage> {
                 minimumSize: const Size.fromHeight(45),
               ),
               icon: const Icon(Icons.share),
-              label: const Text('ENVIAR PARABÉNS NO WHATSAPP', style: TextStyle(fontWeight: FontWeight.bold)),
+              label: const Text(
+                'ENVIAR PARABÉNS NO WHATSAPP',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
             )
           ],
         ),
@@ -189,17 +238,24 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // Card Normal com o ícone de Editar
+  // Card Normal para a lista geral
   Widget _buildCardNormal(Aniversariante item) {
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4),
       child: ListTile(
         leading: CircleAvatar(
-          backgroundImage: item.caminhoFoto != null ? FileImage(File(item.caminhoFoto!)) : null,
-          child: item.caminhoFoto == null ? const Icon(Icons.person) : null,
+          backgroundImage: item.caminhoFoto != null &&
+                  File(item.caminhoFoto!).existsSync()
+              ? FileImage(File(item.caminhoFoto!))
+              : null,
+          child: item.caminhoFoto == null || !File(item.caminhoFoto!).existsSync()
+              ? const Icon(Icons.person)
+              : null,
         ),
         title: Text(item.nome, style: const TextStyle(fontWeight: FontWeight.w600)),
-        subtitle: Text("Data: ${item.dia.toString().padLeft(2, '0')}/${item.mes.toString().padLeft(2, '0')}"),
+        subtitle: Text(
+          "Data: ${item.dia.toString().padLeft(2, '0')}/${item.mes.toString().padLeft(2, '0')}",
+        ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -208,7 +264,7 @@ class _HomePageState extends State<HomePage> {
               onPressed: () => _compartilharWhatsapp(item),
             ),
             IconButton(
-              icon: const Icon(Icons.edit, color: Colors.blue), // ✏️ Botão Editar
+              icon: const Icon(Icons.edit, color: Colors.blue),
               onPressed: () => _editar(item),
             ),
             IconButton(
