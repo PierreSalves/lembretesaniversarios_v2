@@ -11,7 +11,6 @@ import '../database/db_helper.dart';
 class DriveService {
   static const String _nomeArquivoBackup = 'lembretes_aniversarios_backup.db';
 
-  /// Obtém o cliente HTTP autenticado com a conta Google ativa
   static Future<drive.DriveApi?> _obterDriveApi() async {
     try {
       final GoogleSignInAccount? usuario = AuthService.usuarioAtual;
@@ -27,7 +26,6 @@ class DriveService {
     }
   }
 
-  /// Faz o Upload direto do banco de dados local atual para o Google Drive
   static Future<void> fazerUploadBackup() async {
     try {
       final driveApi = await _obterDriveApi();
@@ -48,47 +46,34 @@ class DriveService {
 
       if (listaArquivos.files != null && listaArquivos.files!.isNotEmpty) {
         String fileId = listaArquivos.files!.first.id!;
-        await driveApi.files.update(
-          drive.File(),
-          fileId,
-          uploadMedia: media,
-        );
-        print("Backup atualizado com sucesso no Google Drive!");
+        await driveApi.files.update(drive.File(), fileId, uploadMedia: media);
       } else {
         var driveFile = drive.File();
         driveFile.name = _nomeArquivoBackup;
         driveFile.parents = ['appDataFolder'];
-
-        await driveApi.files.create(
-          driveFile,
-          uploadMedia: media,
-        );
-        print("Primeiro backup criado com sucesso no Google Drive!");
+        await driveApi.files.create(driveFile, uploadMedia: media);
       }
     } catch (e) {
       print("Erro ao realizar upload para o Drive: $e");
     }
   }
 
-  /// Sincronização Local-First com Mesclagem Inteligente (Merge por Nome + Data)
-  static Future<void> sincronizarComDrive() async {
+  /// Sincronização Inteligente com Merge por Timestamp e Soft Delete
+  static Future<bool> sincronizarComDrive() async {
     try {
       final driveApi = await _obterDriveApi();
-      if (driveApi == null) return;
+      if (driveApi == null) return false;
 
-      // 1. Procura o backup na nuvem
       final listaArquivos = await driveApi.files.list(
         spaces: 'appDataFolder',
         q: "name = '$_nomeArquivoBackup'",
       );
 
-      // Se não existe backup na nuvem ainda, apenas enviamos o estado local atual
       if (listaArquivos.files == null || listaArquivos.files!.isEmpty) {
         await fazerUploadBackup();
-        return;
+        return true;
       }
 
-      // 2. Se existe, baixamos para um arquivo temporário (para não destruir o local cegamente)
       String fileId = listaArquivos.files!.first.id!;
       drive.Media arquivoDrive = await driveApi.files.get(
         fileId,
@@ -105,58 +90,58 @@ class DriveService {
       }
       await arquivoTemp.writeAsBytes(dataBytes);
 
-      // 3. Abre o banco temporário da nuvem para ler os registros de lá
       Database dbNuvens = await openDatabase(tempPath);
       List<Map<String, dynamic>> registrosNuvem = await dbNuvens.query('aniversariantes');
       await dbNuvens.close();
 
-      // 4. Pega os registros locais atuais
-      List<Map<String, dynamic>> registrosLocais = await DBHelper.queryAll();
-
-      // 5. Faz a mesclagem (Smart Merge): insere localmente o que está na nuvem e não existe localmente
-      bool houveNovidadesDaNuvem = false;
-      for (var regNuvem in registrosNuvem) {
-        String nomeNuvem = regNuvem['nome'];
-        int diaNuvem = regNuvem['dia'];
-        int mesNuvem = regNuvem['mes'];
-
-        // Verifica se já existe um registro idêntico localmente (comparando nome e data)
-        bool existeLocal = registrosLocais.any((loc) =>
-            loc['nome'].toString().trim().toLowerCase() == nomeNuvem.toString().trim().toLowerCase() &&
-            loc['dia'] == diaNuvem &&
-            loc['mes'] == mesNuvem);
-
-        if (!existeLocal) {
-          // O registro está na nuvem mas não no aparelho local -> Adiciona localmente!
-          await DBHelper.insert({
-            'nome': nomeNuvem,
-            'dia': diaNuvem,
-            'mes': mesNuvem,
-            'caminho_foto': regNuvem['caminho_foto'],
-            'drive_file_id_foto': regNuvem['drive_file_id_foto'],
-          });
-          houveNovidadesDaNuvem = true;
-        }
-      }
-
-      // Limpa o arquivo temporário
       if (await arquivoTemp.exists()) {
         await arquivoTemp.delete();
       }
 
-      // 6. Se trouxemos dados novos da nuvem, atualizamos o backup na nuvem para refletir a união completa
-      if (houveNovidadesDaNuvem) {
-        await fazerUploadBackup();
-        print("Sincronização concluída: Novos registros da nuvem foram mesclados com sucesso!");
-      } else {
-        print("Sincronização concluída: Local já estava atualizado com a nuvem.");
+      Database dbLocal = await DBHelper.database;
+      List<Map<String, dynamic>> registrosLocais = await DBHelper.queryAllParaSincronizacao();
+
+      Map<int, Map<String, dynamic>> mapaLocais = {
+        for (var reg in registrosLocais) reg['id'] as int: reg
+      };
+
+      bool houveAlteracoes = false;
+
+      for (var regNuvem in registrosNuvem) {
+        int idNuvem = regNuvem['id'];
+        int timestampNuvem = regNuvem['data_atualizacao'] ?? 0;
+
+        if (mapaLocais.containsKey(idNuvem)) {
+          var regLocal = mapaLocais[idNuvem]!;
+          int timestampLocal = regLocal['data_atualizacao'] ?? 0;
+
+          if (timestampNuvem > timestampLocal) {
+            await dbLocal.update(
+              'aniversariantes',
+              regNuvem,
+              where: 'id = ?',
+              whereArgs: [idNuvem],
+            );
+            houveAlteracoes = true;
+          }
+          mapaLocais.remove(idNuvem);
+        } else {
+          await dbLocal.insert('aniversariantes', regNuvem);
+          houveAlteracoes = true;
+        }
       }
+
+      if (mapaLocais.isNotEmpty || houveAlteracoes) {
+        await fazerUploadBackup();
+      }
+
+      return true;
     } catch (e) {
-      print("Erro durante a sincronização inteligente com o Drive: $e");
+      print("Erro na sincronização inteligente: $e");
+      return false;
     }
   }
 
-  /// Faz o Upload de uma imagem individual para a pasta privada do Drive
   static Future<String?> fazerUploadImagem(File arquivoLocal) async {
     try {
       final driveApi = await _obterDriveApi();
@@ -167,22 +152,16 @@ class DriveService {
 
       var driveFile = drive.File();
       driveFile.name = nomeArquivoUnico;
-      driveFile.parents = ['appDataFolder']; // Salva na pasta privada do app
+      driveFile.parents = ['appDataFolder'];
 
-      var arquivoCriado = await driveApi.files.create(
-        driveFile,
-        uploadMedia: media,
-      );
-
-      print("Imagem enviada com sucesso para o Google Drive! ID: ${arquivoCriado.id}");
-      return arquivoCriado.id; // Retorna o ID único da imagem na nuvem
+      var arquivoCriado = await driveApi.files.create(driveFile, uploadMedia: media);
+      return arquivoCriado.id;
     } catch (e) {
       print("Erro ao enviar imagem para o Drive: $e");
       return null;
     }
   }
 
-  /// Baixa uma imagem do Google Drive sob demanda usando o fileId
   static Future<File?> baixarImagemDoDrive(String fileId) async {
     try {
       final driveApi = await _obterDriveApi();
@@ -193,7 +172,6 @@ class DriveService {
         downloadOptions: drive.DownloadOptions.fullMedia,
       ) as drive.Media;
 
-      // Salva a imagem no diretório de cache do aparelho local
       final diretorioCache = await getTemporaryDirectory();
       String caminhoLocal = p.join(diretorioCache.path, 'cache_$fileId.jpg');
       var arquivoLocal = File(caminhoLocal);

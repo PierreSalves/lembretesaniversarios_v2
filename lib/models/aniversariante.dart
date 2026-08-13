@@ -6,6 +6,8 @@ class Aniversariante {
   final String? caminhoFoto;
   final String? driveFileIdFoto;
   final String? mensagemCustomizada;
+  final int excluido;
+  final int dataAtualizacao;
 
   Aniversariante({
     this.id,
@@ -15,6 +17,8 @@ class Aniversariante {
     this.caminhoFoto,
     this.driveFileIdFoto,
     this.mensagemCustomizada,
+    this.excluido = 0,
+    this.dataAtualizacao = 0,
   });
 
   Map<String, dynamic> toMap() {
@@ -26,6 +30,8 @@ class Aniversariante {
       'caminho_foto': caminhoFoto,
       'drive_file_id_foto': driveFileIdFoto,
       'mensagem_customizada': mensagemCustomizada,
+      'excluido': excluido,
+      'data_atualizacao': dataAtualizacao,
     };
   }
 
@@ -38,6 +44,8 @@ class Aniversariante {
       caminhoFoto: map['caminho_foto'],
       driveFileIdFoto: map['drive_file_id_foto'],
       mensagemCustomizada: map['mensagem_customizada'],
+      excluido: map['excluido'] ?? 0,
+      dataAtualizacao: map['data_atualizacao'] ?? 0,
     );
   }
 }
