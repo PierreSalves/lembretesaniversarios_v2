@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../database/db_helper.dart';
 import '../models/aniversariante.dart';
+import '../services/auth_service.dart';
+import '../services/drive_service.dart';
 import '../services/notification_service.dart';
 import '../widgets/card_aniversariante.dart';
 import '../widgets/card_aniversariante_do_dia.dart';
@@ -24,31 +26,46 @@ class _HomePageState extends State<HomePage> {
     _inicializarTela();
   }
 
-  /// Executa o fluxo de inicialização respeitando o SRP
+  /// Executa o fluxo de inicialização preservando a ordem segura:
+  /// 1. Sincronização Local-First com o Drive (sem apagar dados locais)
+  /// 2. Carregamento dos dados locais do SQLite (_carregarDados)
+  /// 3. Tratamento das notificações (_cancelarLembretesDiarios e _agendarNotificacoes)
   Future<void> _inicializarTela() async {
+    setState(() => _carregando = true);
+
+    try {
+      // Sincroniza de forma inteligente com o Google Drive se houver internet
+      if (await AuthService.temConexaoInternet()) {
+        await DriveService.sincronizarComDrive();
+      }
+    } catch (e) {
+      debugPrint("Erro ao sincronizar com o Drive na inicialização: $e");
+    }
+
     await _carregarDados();
     await _cancelarLembretesDiarios();
     await _agendarNotificacoes();
   }
 
-  /// SRP 1: Busca dados do SQLite
+  /// Busca dados do SQLite local (Fonte da Verdade)
   Future<void> _carregarDados() async {
-    setState(() => _carregando = true);
     final dados = await DBHelper.queryAll();
     final lista = dados.map((item) => Aniversariante.fromMap(item)).toList();
 
-    setState(() {
-      _lista = lista;
-      _carregando = false;
-    });
+    if (mounted) {
+      setState(() {
+        _lista = lista;
+        _carregando = false;
+      });
+    }
   }
 
-  /// SRP 2: Cancela notificações pendentes antes de reagendar
+  /// Cancela notificações pendentes antes de reagendar
   Future<void> _cancelarLembretesDiarios() async {
     await NotificationService.cancelarTodasNotificacoes();
   }
 
-  /// SRP 3: Agenda notificações para cada aniversariante
+  /// Agenda notificações para cada aniversariante da lista
   Future<void> _agendarNotificacoes() async {
     for (var item in _lista) {
       if (item.id != null) {
@@ -71,6 +88,10 @@ class _HomePageState extends State<HomePage> {
     );
 
     if (alterou == true) {
+      // Se alterou ou cadastrou, envia o backup atualizado para o Google Drive
+      if (await AuthService.temConexaoInternet()) {
+        await DriveService.fazerUploadBackup();
+      }
       await _inicializarTela();
     }
   }

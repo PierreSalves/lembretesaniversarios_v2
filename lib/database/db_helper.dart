@@ -25,6 +25,7 @@ class DBHelper {
             dia INTEGER NOT NULL,
             mes INTEGER NOT NULL,
             caminho_foto TEXT,
+            drive_file_id_foto TEXT,
             mensagem_customizada TEXT
           )
         ''');

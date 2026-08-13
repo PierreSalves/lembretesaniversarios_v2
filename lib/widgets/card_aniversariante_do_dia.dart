@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import '../models/aniversariante.dart';
+import '../services/drive_service.dart';
 
 class CardAniversarianteDoDia extends StatelessWidget {
   final Aniversariante aniversariante;
@@ -13,16 +14,66 @@ class CardAniversarianteDoDia extends StatelessWidget {
     required this.onEdit,
   });
 
-  Future<void> _compartilharWhatsapp() async {
+  Future<void> _compartilharWhatsapp(BuildContext context) async {
     final String texto =
         "${aniversariante.mensagemCustomizada}\n\n- Parabéns, ${aniversariante.nome}! 🎂🎉";
 
     if (aniversariante.caminhoFoto != null &&
+        aniversariante.caminhoFoto!.isNotEmpty &&
         File(aniversariante.caminhoFoto!).existsSync()) {
       await Share.shareXFiles([XFile(aniversariante.caminhoFoto!)], text: texto);
+    } else if (aniversariante.driveFileIdFoto != null &&
+        aniversariante.driveFileIdFoto!.isNotEmpty) {
+      File? arquivoBaixado = await DriveService.baixarImagemDoDrive(aniversariante.driveFileIdFoto!);
+      if (arquivoBaixado != null && arquivoBaixado.existsSync()) {
+        await Share.shareXFiles([XFile(arquivoBaixado.path)], text: texto);
+      } else {
+        await Share.share(texto);
+      }
     } else {
       await Share.share(texto);
     }
+  }
+
+  Widget _construirAvatar() {
+    if (aniversariante.caminhoFoto != null &&
+        aniversariante.caminhoFoto!.isNotEmpty &&
+        File(aniversariante.caminhoFoto!).existsSync()) {
+      return CircleAvatar(
+        radius: 28,
+        backgroundImage: FileImage(File(aniversariante.caminhoFoto!)),
+      );
+    }
+
+    if (aniversariante.driveFileIdFoto != null &&
+        aniversariante.driveFileIdFoto!.isNotEmpty) {
+      return FutureBuilder<File?>(
+        future: DriveService.baixarImagemDoDrive(aniversariante.driveFileIdFoto!),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.done &&
+              snapshot.hasData &&
+              snapshot.data != null) {
+            return CircleAvatar(
+              radius: 28,
+              backgroundImage: FileImage(snapshot.data!),
+            );
+          }
+          return const CircleAvatar(
+            radius: 28,
+            child: SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          );
+        },
+      );
+    }
+
+    return const CircleAvatar(
+      radius: 28,
+      child: Icon(Icons.person, size: 28),
+    );
   }
 
   @override
@@ -35,21 +86,12 @@ class CardAniversarianteDoDia extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(12.0),
+        padding: const EdgeInsets.all(12),
         child: Column(
           children: [
             ListTile(
-              leading: CircleAvatar(
-                radius: 30,
-                backgroundImage: aniversariante.caminhoFoto != null &&
-                        File(aniversariante.caminhoFoto!).existsSync()
-                    ? FileImage(File(aniversariante.caminhoFoto!))
-                    : null,
-                child: aniversariante.caminhoFoto == null ||
-                        !File(aniversariante.caminhoFoto!).existsSync()
-                    ? const Icon(Icons.person)
-                    : null,
-              ),
+              contentPadding: EdgeInsets.zero,
+              leading: _construirAvatar(),
               title: Text(
                 aniversariante.nome,
                 style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
@@ -64,7 +106,7 @@ class CardAniversarianteDoDia extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             ElevatedButton.icon(
-              onPressed: _compartilharWhatsapp,
+              onPressed: () => _compartilharWhatsapp(context),
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.green[700],
                 foregroundColor: Colors.white,
