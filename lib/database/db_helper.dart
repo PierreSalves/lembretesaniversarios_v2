@@ -16,7 +16,7 @@ class DBHelper {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE aniversariantes (
@@ -30,6 +30,20 @@ class DBHelper {
           )
         ''');
       },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          try {
+            await db.execute("ALTER TABLE aniversariantes ADD COLUMN drive_file_id_foto TEXT;");
+          } catch (e) {
+            print(e);
+          }
+          try {
+            await db.execute("ALTER TABLE aniversariantes ADD COLUMN mensagem_customizada TEXT;");
+          } catch (e) {
+            print(e);
+          }
+        }
+      },
     );
   }
 
@@ -39,7 +53,7 @@ class DBHelper {
     return await db.insert('aniversariantes', row);
   }
 
-  // Atualizar aniversariante mantendo a assinatura padrão (Map + ID)
+  // Atualizar aniversariante mantendo a sua assinatura padrão (Map + ID)
   static Future<int> update(Map<String, dynamic> row, int id) async {
     Database db = await database;
     return await db.update(
@@ -50,15 +64,19 @@ class DBHelper {
     );
   }
 
+  // Excluir aniversariante
+  static Future<int> delete(int id) async {
+    Database db = await database;
+    return await db.delete(
+      'aniversariantes',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
   // Listar todos os aniversariantes
   static Future<List<Map<String, dynamic>>> queryAll() async {
     Database db = await database;
     return await db.query('aniversariantes', orderBy: 'mes ASC, dia ASC');
-  }
-
-  // Deletar aniversariante por ID
-  static Future<int> delete(int id) async {
-    Database db = await database;
-    return await db.delete('aniversariantes', where: 'id = ?', whereArgs: [id]);
   }
 }

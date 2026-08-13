@@ -7,25 +7,24 @@ import '../services/drive_service.dart';
 class CardAniversariante extends StatelessWidget {
   final Aniversariante aniversariante;
   final VoidCallback onEdit;
+  final VoidCallback onDelete;
 
   const CardAniversariante({
     super.key,
     required this.aniversariante,
     required this.onEdit,
+    required this.onDelete,
   });
 
   Future<void> _compartilharWhatsapp(BuildContext context) async {
     final String texto =
         "${aniversariante.mensagemCustomizada}\n\n- Parabéns, ${aniversariante.nome}! 🎂🎉";
 
-    // 1. Se a foto existe localmente
     if (aniversariante.caminhoFoto != null &&
         aniversariante.caminhoFoto!.isNotEmpty &&
         File(aniversariante.caminhoFoto!).existsSync()) {
       await Share.shareXFiles([XFile(aniversariante.caminhoFoto!)], text: texto);
-    } 
-    // 2. Se não está local, mas tem o ID no Drive, baixa para o cache temporário para compartilhar com foto
-    else if (aniversariante.driveFileIdFoto != null &&
+    } else if (aniversariante.driveFileIdFoto != null &&
         aniversariante.driveFileIdFoto!.isNotEmpty) {
       File? arquivoBaixado = await DriveService.baixarImagemDoDrive(aniversariante.driveFileIdFoto!);
       if (arquivoBaixado != null && arquivoBaixado.existsSync()) {
@@ -39,7 +38,6 @@ class CardAniversariante extends StatelessWidget {
   }
 
   Widget _construirAvatar() {
-    // 1. Prioridade Local
     if (aniversariante.caminhoFoto != null &&
         aniversariante.caminhoFoto!.isNotEmpty &&
         File(aniversariante.caminhoFoto!).existsSync()) {
@@ -48,7 +46,6 @@ class CardAniversariante extends StatelessWidget {
       );
     }
 
-    // 2. Fallback Google Drive sob demanda
     if (aniversariante.driveFileIdFoto != null &&
         aniversariante.driveFileIdFoto!.isNotEmpty) {
       return FutureBuilder<File?>(
@@ -72,7 +69,6 @@ class CardAniversariante extends StatelessWidget {
       );
     }
 
-    // 3. Padrão sem foto
     return const CircleAvatar(
       child: Icon(Icons.person),
     );
@@ -101,6 +97,10 @@ class CardAniversariante extends StatelessWidget {
             IconButton(
               icon: const Icon(Icons.edit, color: Colors.blue),
               onPressed: onEdit,
+            ),
+            IconButton(
+              icon: const Icon(Icons.delete, color: Colors.red),
+              onPressed: onDelete,
             ),
           ],
         ),

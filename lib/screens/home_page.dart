@@ -79,6 +79,35 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  /// Exclui um aniversariante localmente e atualiza o backup no Drive
+  Future<void> _deletarAniversariante(Aniversariante item) async {
+    final confirmar = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Excluir Aniversariante'),
+        content: Text('Deseja realmente excluir ${item.nome}?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancelar'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Excluir', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmar == true && item.id != null) {
+      await DBHelper.delete(item.id!);
+      if (await AuthService.temConexaoInternet()) {
+        await DriveService.fazerUploadBackup();
+      }
+      await _inicializarTela();
+    }
+  }
+
   void _abrirCadastro([Aniversariante? item]) async {
     final alterou = await Navigator.push(
       context,
@@ -164,6 +193,7 @@ class _HomePageState extends State<HomePage> {
                       (item) => CardAniversariante(
                         aniversariante: item,
                         onEdit: () => _abrirCadastro(item),
+                        onDelete: () => _deletarAniversariante(item),
                       ),
                     ),
                   ],

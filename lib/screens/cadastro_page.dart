@@ -5,7 +5,7 @@ import '../database/db_helper.dart';
 import '../models/aniversariante.dart';
 
 class CadastroPage extends StatefulWidget {
-  final Aniversariante? aniversariante; // Aceita objeto opcional para edição
+  final Aniversariante? aniversariante;
 
   const CadastroPage({super.key, this.aniversariante});
 
@@ -15,7 +15,7 @@ class CadastroPage extends StatefulWidget {
 
 class _CadastroPageState extends State<CadastroPage> {
   final _formKey = GlobalKey<FormState>();
-  
+
   late TextEditingController _nomeController;
   late TextEditingController _mensagemController;
 
@@ -28,11 +28,12 @@ class _CadastroPageState extends State<CadastroPage> {
   @override
   void initState() {
     super.initState();
-    
-    // Se for edição, preenche com os dados existentes; se for novo, carrega padrão
-    _nomeController = TextEditingController(text: widget.aniversariante?.nome ?? '');
+    _nomeController = TextEditingController(
+      text: widget.aniversariante?.nome ?? '',
+    );
     _mensagemController = TextEditingController(
-      text: widget.aniversariante?.mensagemCustomizada ??
+      text:
+          widget.aniversariante?.mensagemCustomizada ??
           "Parabéns, meu caro guerreiro! Muita saúde, paz e felicidades neste dia especial!",
     );
 
@@ -50,77 +51,71 @@ class _CadastroPageState extends State<CadastroPage> {
     _mensagemController.dispose();
     super.dispose();
   }
-
-  // Escolher ou tirar foto
-  Future<void> _selecionarFoto(ImageSource source) async {
-    final XFile? image = await _picker.pickImage(
-      source: source,
-      imageQuality: 80,
-    );
-
-    if (image != null) {
+  Future<void> _escolherFoto() async {
+    final XFile? foto = await _picker.pickImage(source: ImageSource.gallery);
+    if (foto != null) {
       setState(() {
-        _caminhoFoto = image.path;
+        _caminhoFoto = foto.path;
       });
     }
   }
 
-  // Abrir seletor de data
-  Future<void> _selecionarData() async {
-    final DateTime dataInicial = _diaSelecionado != null && _mesSelecionado != null
-        ? DateTime(DateTime.now().year, _mesSelecionado!, _diaSelecionado!)
-        : DateTime.now();
-
-    final DateTime? picked = await showDatePicker(
-      context: context,
-      initialDate: dataInicial,
-      firstDate: DateTime(1900),
-      lastDate: DateTime(2100),
-      helpText: 'SELEÇÃO DA DATA DE ANIVERSÁRIO',
-      cancelText: 'CANCELAR',
-      confirmText: 'CONFIRMAR',
-    );
-
-    if (picked != null) {
-      setState(() {
-        _diaSelecionado = picked.day;
-        _mesSelecionado = picked.month;
-      });
-    }
-  }
-
-  // Guardar ou Atualizar no SQLite
   Future<void> _guardar() async {
     if (_formKey.currentState!.validate()) {
       if (_diaSelecionado == null || _mesSelecionado == null) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text('Por favor, selecione a data de aniversário.'),
+            content: Text('Por favor, selecione a data do aniversário.'),
           ),
         );
         return;
       }
 
-      final item = Aniversariante(
-        id: widget.aniversariante?.id, // Preserva o ID original em caso de edição
-        nome: _nomeController.text.trim(),
+      final novoAniversariante = Aniversariante(
+        id: widget.aniversariante?.id,
+        nome: _nomeController.text,
         dia: _diaSelecionado!,
         mes: _mesSelecionado!,
         caminhoFoto: _caminhoFoto,
-        mensagemCustomizada: _mensagemController.text.trim(),
+        mensagemCustomizada: _mensagemController.text,
       );
 
       if (widget.aniversariante == null) {
-        // Novo Cadastro
-        await DBHelper.insert(item.toMap());
+        await DBHelper.insert(novoAniversariante.toMap());
       } else {
-        // Atualização (passando o mapa e o ID)
-        await DBHelper.update(item.toMap(), widget.aniversariante!.id!);
+        await DBHelper.update(
+          novoAniversariante.toMap(),
+          widget.aniversariante!.id!,
+        );
       }
 
       if (mounted) {
-        Navigator.pop(context, true); // Retorna confirmando a alteração
+        Navigator.pop(context, true);
       }
+    }
+  }
+
+  void _selecionarData(BuildContext context) async {
+    final DateTime hoje = DateTime.now();
+    final DateTime? dataEscolhida = await showDatePicker(
+      context: context,
+      initialDate: widget.aniversariante != null
+          ? DateTime(
+              hoje.year,
+              widget.aniversariante!.mes,
+              widget.aniversariante!.dia,
+            )
+          : hoje,
+      firstDate: DateTime(1900),
+      lastDate: DateTime(2100),
+      helpText: 'SELECIONE O DIA E MÊS',
+    );
+
+    if (dataEscolhida != null) {
+      setState(() {
+        _diaSelecionado = dataEscolhida.day;
+        _mesSelecionado = dataEscolhida.month;
+      });
     }
   }
 
@@ -130,90 +125,73 @@ class _CadastroPageState extends State<CadastroPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(eEdicao ? 'Editar Aniversariante' : 'Cadastrar Aniversariante'),
-        backgroundColor: Colors.blueGrey[800],
+        title: Text(eEdicao ? 'Editar Aniversariante' : 'Novo Aniversariante'),
+        backgroundColor: Colors.blueGrey[900],
         foregroundColor: Colors.white,
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(16),
         child: Form(
           key: _formKey,
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // --- ÁREA DA FOTO ---
-              Center(
-                child: Column(
-                  children: [
-                    CircleAvatar(
-                      radius: 60,
-                      backgroundColor: Colors.grey[300],
-                      backgroundImage: _caminhoFoto != null && File(_caminhoFoto!).existsSync()
-                          ? FileImage(File(_caminhoFoto!))
-                          : null,
-                      child: _caminhoFoto == null || !File(_caminhoFoto!).existsSync()
-                          ? const Icon(
-                              Icons.person,
-                              size: 70,
-                              color: Colors.grey,
-                            )
-                          : null,
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        ElevatedButton.icon(
-                          onPressed: () => _selecionarFoto(ImageSource.camera),
-                          icon: const Icon(Icons.camera_alt),
-                          label: const Text('Câmera'),
-                        ),
-                        const SizedBox(width: 10),
-                        ElevatedButton.icon(
-                          onPressed: () => _selecionarFoto(ImageSource.gallery),
-                          icon: const Icon(Icons.photo_library),
-                          label: const Text('Galeria'),
-                        ),
-                      ],
-                    ),
-                  ],
+              GestureDetector(
+                onTap: _escolherFoto,
+                child: CircleAvatar(
+                  radius: 60,
+                  backgroundColor: Colors.grey[300],
+                  backgroundImage:
+                      _caminhoFoto != null && File(_caminhoFoto!).existsSync()
+                      ? FileImage(File(_caminhoFoto!))
+                      : null,
+                  child:
+                      _caminhoFoto == null || !File(_caminhoFoto!).existsSync()
+                      ? const Icon(
+                          Icons.camera_alt,
+                          size: 50,
+                          color: Colors.white,
+                        )
+                      : null,
                 ),
               ),
-              const SizedBox(height: 20),
-
-              // --- CAMPO NOME ---
+              const SizedBox(height: 8),
+              const Text(
+                'Toque para adicionar/alterar a foto',
+                textAlign: TextAlign.center,
+                style: TextStyle(color: Colors.grey),
+              ),
+              const SizedBox(height: 24),
               TextFormField(
                 controller: _nomeController,
                 style: const TextStyle(fontSize: 18),
                 decoration: const InputDecoration(
-                  labelText: 'Nome do Aniversariante',
+                  labelText: 'Nome do Colega',
                   border: OutlineInputBorder(),
-                  prefixIcon: Icon(Icons.person_outline),
+                  prefixIcon: Icon(Icons.person),
                 ),
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Por favor, insira o nome';
+                validator: (valor) {
+                  if (valor == null || valor.isEmpty) {
+                    return 'O nome é obrigatório';
                   }
                   return null;
                 },
               ),
               const SizedBox(height: 16),
-
-              // --- CAMPO DATA ---
               InkWell(
-                onTap: _selecionarData,
+                onTap: () => _selecionarData(context),
                 child: InputDecorator(
                   decoration: const InputDecoration(
                     labelText: 'Data de Aniversário',
                     border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.cake_outlined),
+                    prefixIcon: Icon(Icons.calendar_today),
                   ),
                   child: Text(
                     _diaSelecionado != null && _mesSelecionado != null
-                        ? 'Dia ${_diaSelecionado.toString().padLeft(2, '0')} do Mês ${_mesSelecionado.toString().padLeft(2, '0')}'
-                        : 'Clique para escolher o dia e mês',
+                        ? "${_diaSelecionado.toString().padLeft(2, '0')} / ${_mesSelecionado.toString().padLeft(2, '0')}"
+                        : 'Selecione a data',
                     style: TextStyle(
-                      fontSize: 16,
+                      fontSize: 18,
                       color: _diaSelecionado != null
                           ? Colors.black
                           : Colors.grey[600],
@@ -222,8 +200,6 @@ class _CadastroPageState extends State<CadastroPage> {
                 ),
               ),
               const SizedBox(height: 16),
-
-              // --- MENSAGEM ---
               TextFormField(
                 controller: _mensagemController,
                 maxLines: 3,
@@ -235,12 +211,12 @@ class _CadastroPageState extends State<CadastroPage> {
                 ),
               ),
               const SizedBox(height: 24),
-
-              // --- BOTÃO SALVAR / ATUALIZAR ---
               ElevatedButton(
                 onPressed: _guardar,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: eEdicao ? Colors.orange[800] : Colors.green[700],
+                  backgroundColor: eEdicao
+                      ? Colors.orange[800]
+                      : Colors.green[700],
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   textStyle: const TextStyle(
@@ -248,7 +224,11 @@ class _CadastroPageState extends State<CadastroPage> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-                child: Text(eEdicao ? 'ATUALIZAR ANIVERSARIANTE' : 'SALVAR ANIVERSARIANTE'),
+                child: Text(
+                  eEdicao
+                      ? 'ATUALIZAR ANIVERSARIANTE'
+                      : 'SALVAR ANIVERSARIANTE',
+                ),
               ),
             ],
           ),
