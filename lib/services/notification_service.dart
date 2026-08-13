@@ -1,24 +1,32 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _notificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
+  /// Inicializa o plugin de notificações
   static Future<void> init() async {
-    tz.initializeTimeZones();
-
     const AndroidInitializationSettings initializationSettingsAndroid =
         AndroidInitializationSettings('@mipmap/ic_launcher');
 
     const InitializationSettings initializationSettings =
-        InitializationSettings(android: initializationSettingsAndroid);
+        InitializationSettings(
+      android: initializationSettingsAndroid,
+    );
 
-    await _notificationsPlugin.initialize(initializationSettings);
+    // 📌 Parâmetro nomeado 'settings:' exigido pelas versões mais recentes
+    await _notificationsPlugin.initialize(
+      settings: initializationSettings,
+    );
   }
 
-  // Agenda o lote de notificações a cada 2 horas (06:00, 08:00, 10:00, 12:00, 14:00, 16:00, 18:00, 20:00)
+  /// Cancela todos os agendamentos de notificações
+  static Future<void> cancelarTodasNotificacoes() async {
+    await _notificationsPlugin.cancelAll();
+  }
+
+  /// Agenda os lembretes de 2 em 2 horas (das 06h às 20h) para a data de aniversário
   static Future<void> agendarNotificacoesAniversario({
     required int idBase,
     required String nome,
@@ -26,43 +34,50 @@ class NotificationService {
     required int mes,
   }) async {
     final agora = DateTime.now();
-    final List<int> horasPermitidas = [6, 8, 10, 12, 14, 16, 18, 20];
+    var dataAniversario = DateTime(agora.year, mes, dia);
 
-    for (int i = 0; i < horasPermitidas.length; i++) {
-      int hora = horasPermitidas[i];
-      var dataAlvo = DateTime(agora.year, mes, dia, hora, 0);
+    // Se a data deste ano já passou, agenda para o próximo ano
+    if (dataAniversario.isBefore(agora)) {
+      dataAniversario = DateTime(agora.year + 1, mes, dia);
+    }
 
-      // Se o horário de hoje já passou, agenda para o ano seguinte
-      if (dataAlvo.isBefore(agora)) {
-        dataAlvo = DateTime(agora.year + 1, mes, dia, hora, 0);
-      }
+    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
+      'lembretes_aniversario_channel',
+      'Lembretes de Aniversários',
+      channelDescription: 'Notificações de lembrete de aniversariantes',
+      importance: Importance.max,
+      priority: Priority.high,
+    );
 
-      final tzDataAlvo = tz.TZDateTime.from(dataAlvo, tz.local);
-      int notificationId = (idBase * 100) + i;
+    const NotificationDetails notificationDetails = NotificationDetails(
+      android: androidDetails,
+    );
 
+    // Horários para notificar: de 2h em 2h das 06:00 às 20:00
+    final horarios = [6, 8, 10, 12, 14, 16, 18, 20];
+
+    for (int i = 0; i < horarios.length; i++) {
+      final hora = horarios[i];
+      final dataNotificacao = DateTime(
+        dataAniversario.year,
+        dataAniversario.month,
+        dataAniversario.day,
+        hora,
+        0,
+      );
+
+      final tzData = tz.TZDateTime.from(dataNotificacao, tz.local);
+
+      // 📌 Parâmetros estritamente nomeados para compatibilidade com versões novas
       await _notificationsPlugin.zonedSchedule(
-        notificationId,
-        '🎉 Aniversário de $nome Hoje!',
-        'Lembre-se de enviar os parabéns no WhatsApp!',
-        tzDataAlvo,
-        const NotificationDetails(
-          android: AndroidNotificationDetails(
-            'canal_aniversarios',
-            'Lembretes de Aniversário',
-            channelDescription: 'Alertas recorrentes para dar parabéns aos colegas',
-            importance: Importance.max,
-            priority: Priority.high,
-          ),
-        ),
+        id: idBase * 100 + i,
+        title: '🎉 Aniversário Hoje!',
+        body: 'Hoje é o aniversário de $nome! Lembre-se de dar os parabéns.',
+        scheduledDate: tzData,
+        notificationDetails: notificationDetails,
         androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-        uiLocalNotificationDateInterpretation:
-            UILocalNotificationDateInterpretation.absoluteTime,
-        matchDateTimeComponents: DateTimeComponents.dateAndTime,
+        matchDateTimeComponents: DateTimeComponents.time,
       );
     }
-  }
-
-  static Future<void> cancelarTodasNotificacoes() async {
-    await _notificationsPlugin.cancelAll();
   }
 }
