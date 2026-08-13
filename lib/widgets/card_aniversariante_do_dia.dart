@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import '../models/aniversariante.dart';
-import '../services/drive_service.dart';
 
 class CardAniversarianteDoDia extends StatelessWidget {
   final Aniversariante aniversariante;
@@ -16,68 +15,23 @@ class CardAniversarianteDoDia extends StatelessWidget {
 
   Future<void> _compartilharWhatsapp(BuildContext context) async {
     final String texto =
-        "${aniversariante.mensagemCustomizada}\n\n- Parabéns, ${aniversariante.nome}! 🎂🎉";
+        "${aniversariante.mensagemCustomizada ?? 'Parabéns!'}\n\n- Parabéns, ${aniversariante.nome}! 🎂🎉";
 
     if (aniversariante.caminhoFoto != null &&
         aniversariante.caminhoFoto!.isNotEmpty &&
         File(aniversariante.caminhoFoto!).existsSync()) {
       await Share.shareXFiles([XFile(aniversariante.caminhoFoto!)], text: texto);
-    } else if (aniversariante.driveFileIdFoto != null &&
-        aniversariante.driveFileIdFoto!.isNotEmpty) {
-      File? arquivoBaixado = await DriveService.baixarImagemDoDrive(aniversariante.driveFileIdFoto!);
-      if (arquivoBaixado != null && arquivoBaixado.existsSync()) {
-        await Share.shareXFiles([XFile(arquivoBaixado.path)], text: texto);
-      } else {
-        await Share.share(texto);
-      }
     } else {
       await Share.share(texto);
     }
   }
 
-  Widget _construirAvatar() {
-    if (aniversariante.caminhoFoto != null &&
-        aniversariante.caminhoFoto!.isNotEmpty &&
-        File(aniversariante.caminhoFoto!).existsSync()) {
-      return CircleAvatar(
-        radius: 28,
-        backgroundImage: FileImage(File(aniversariante.caminhoFoto!)),
-      );
-    }
-
-    if (aniversariante.driveFileIdFoto != null &&
-        aniversariante.driveFileIdFoto!.isNotEmpty) {
-      return FutureBuilder<File?>(
-        future: DriveService.baixarImagemDoDrive(aniversariante.driveFileIdFoto!),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.done &&
-              snapshot.hasData &&
-              snapshot.data != null) {
-            return CircleAvatar(
-              radius: 28,
-              backgroundImage: FileImage(snapshot.data!),
-            );
-          }
-          return const CircleAvatar(
-            radius: 28,
-            child: SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-          );
-        },
-      );
-    }
-
-    return const CircleAvatar(
-      radius: 28,
-      child: Icon(Icons.person, size: 28),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
+    final temFoto = aniversariante.caminhoFoto != null &&
+        aniversariante.caminhoFoto!.isNotEmpty &&
+        File(aniversariante.caminhoFoto!).existsSync();
+
     return Card(
       color: Colors.green[50],
       elevation: 4,
@@ -91,7 +45,11 @@ class CardAniversarianteDoDia extends StatelessWidget {
           children: [
             ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: _construirAvatar(),
+              leading: CircleAvatar(
+                radius: 28,
+                backgroundImage: temFoto ? FileImage(File(aniversariante.caminhoFoto!)) : null,
+                child: !temFoto ? const Icon(Icons.person, size: 28) : null,
+              ),
               title: Text(
                 aniversariante.nome,
                 style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),

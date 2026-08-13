@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
+import 'package:sqflite/sqflite.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import '../services/auth_service.dart';
 import 'login_page.dart';
 
 class ConfiguracoesPage extends StatelessWidget {
   const ConfiguracoesPage({super.key});
 
-  /// Função para confirmar e realizar o Logout
+  /// Função para confirmar, limpar os dados locais e realizar o Logout
   void _confirmarLogout(BuildContext context) {
     showDialog(
       context: context,
@@ -27,10 +31,31 @@ class ConfiguracoesPage extends StatelessWidget {
             ),
             onPressed: () async {
               Navigator.pop(ctx); // Fecha o modal
+
+              try {
+                // 1. Fecha conexões abertas do SQLite e apaga o arquivo do banco local
+                var databasesPath = await getDatabasesPath();
+                String path = p.join(databasesPath, 'aniversarios.db');
+                var dbFile = File(path);
+                if (await dbFile.exists()) {
+                  await dbFile.delete();
+                }
+
+                // 2. Apaga o registo de sincronização diária da conta anterior
+                final diretorio = await getApplicationDocumentsDirectory();
+                final arquivoSync = File('${diretorio.path}/ultima_sync.txt');
+                if (await arquivoSync.exists()) {
+                  await arquivoSync.delete();
+                }
+              } catch (e) {
+                print("Erro ao limpar dados locais no logout: $e");
+              }
+
+              // 3. Desconecta a conta Google
               await AuthService.fazerLogout();
 
               if (context.mounted) {
-                // Redireciona para a tela de Login removendo todo o histórico de navegação
+                // Redireciona para a tela de Login limpando o histórico
                 Navigator.pushAndRemoveUntil(
                   context,
                   MaterialPageRoute(builder: (context) => const LoginPage()),
@@ -48,7 +73,6 @@ class ConfiguracoesPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final usuario = AuthService.usuarioAtual;
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('Configurações'),
@@ -58,7 +82,6 @@ class ConfiguracoesPage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // --- SEÇÃO: INFORMAÇÕES DO USUÁRIO ---
           if (usuario != null) ...[
             Card(
               elevation: 2,
@@ -107,10 +130,8 @@ class ConfiguracoesPage extends StatelessWidget {
             ),
             const SizedBox(height: 24),
           ],
-
-          // --- SEÇÃO: APARÊNCIA E CONTA ---
           const Text(
-            'Conta e Sincronização',
+            'Conta Google',
             style: TextStyle(
               fontSize: 14,
               fontWeight: FontWeight.bold,
@@ -118,29 +139,24 @@ class ConfiguracoesPage extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-
-          ListTile(
-            leading: const Icon(Icons.cloud_done, color: Colors.green),
-            title: const Text('Sincronização com o Drive'),
-            subtitle: const Text('Ativa e salva automaticamente'),
+          const ListTile(
+            leading: Icon(Icons.cloud_done, color: Colors.green),
+            title: Text('Sincronização com o Drive'),
+            subtitle: Text('Ativa e salva automaticamente com segurança'),
           ),
-
           const Divider(),
-
-          // Botão de Logout
           ListTile(
             leading: const Icon(Icons.logout, color: Colors.red),
             title: const Text(
               'Sair da Conta',
               style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
             ),
-            subtitle: const Text('Desconecta a sua conta Google deste aparelho'),
+            subtitle: const Text(
+              'Desconecta a conta e limpa os dados locais do aparelho',
+            ),
             onTap: () => _confirmarLogout(context),
           ),
-
           const SizedBox(height: 32),
-
-          // --- SEÇÃO: OPERAÇÕES FUTURAS (Espaço reservado) ---
           const Text(
             'Sobre o App',
             style: TextStyle(
@@ -150,7 +166,6 @@ class ConfiguracoesPage extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-
           const ListTile(
             leading: Icon(Icons.info_outline),
             title: Text('Versão do Aplicativo'),

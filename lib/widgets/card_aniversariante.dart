@@ -2,7 +2,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import '../models/aniversariante.dart';
-import '../services/drive_service.dart';
 
 class CardAniversariante extends StatelessWidget {
   final Aniversariante aniversariante;
@@ -18,68 +17,30 @@ class CardAniversariante extends StatelessWidget {
 
   Future<void> _compartilharWhatsapp(BuildContext context) async {
     final String texto =
-        "${aniversariante.mensagemCustomizada}\n\n- Parabéns, ${aniversariante.nome}! 🎂🎉";
+        "${aniversariante.mensagemCustomizada ?? 'Parabéns!'}\n\n- Parabéns, ${aniversariante.nome}! 🎂🎉";
 
     if (aniversariante.caminhoFoto != null &&
         aniversariante.caminhoFoto!.isNotEmpty &&
         File(aniversariante.caminhoFoto!).existsSync()) {
       await Share.shareXFiles([XFile(aniversariante.caminhoFoto!)], text: texto);
-    } else if (aniversariante.driveFileIdFoto != null &&
-        aniversariante.driveFileIdFoto!.isNotEmpty) {
-      File? arquivoBaixado = await DriveService.baixarImagemDoDrive(aniversariante.driveFileIdFoto!);
-      if (arquivoBaixado != null && arquivoBaixado.existsSync()) {
-        await Share.shareXFiles([XFile(arquivoBaixado.path)], text: texto);
-      } else {
-        await Share.share(texto);
-      }
     } else {
       await Share.share(texto);
     }
   }
 
-  Widget _construirAvatar() {
-    if (aniversariante.caminhoFoto != null &&
-        aniversariante.caminhoFoto!.isNotEmpty &&
-        File(aniversariante.caminhoFoto!).existsSync()) {
-      return CircleAvatar(
-        backgroundImage: FileImage(File(aniversariante.caminhoFoto!)),
-      );
-    }
-
-    if (aniversariante.driveFileIdFoto != null &&
-        aniversariante.driveFileIdFoto!.isNotEmpty) {
-      return FutureBuilder<File?>(
-        future: DriveService.baixarImagemDoDrive(aniversariante.driveFileIdFoto!),
-        builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.done &&
-              snapshot.hasData &&
-              snapshot.data != null) {
-            return CircleAvatar(
-              backgroundImage: FileImage(snapshot.data!),
-            );
-          }
-          return const CircleAvatar(
-            child: SizedBox(
-              width: 16,
-              height: 16,
-              child: CircularProgressIndicator(strokeWidth: 2),
-            ),
-          );
-        },
-      );
-    }
-
-    return const CircleAvatar(
-      child: Icon(Icons.person),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
+    final temFoto = aniversariante.caminhoFoto != null &&
+        aniversariante.caminhoFoto!.isNotEmpty &&
+        File(aniversariante.caminhoFoto!).existsSync();
+
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4),
       child: ListTile(
-        leading: _construirAvatar(),
+        leading: CircleAvatar(
+          backgroundImage: temFoto ? FileImage(File(aniversariante.caminhoFoto!)) : null,
+          child: !temFoto ? const Icon(Icons.person) : null,
+        ),
         title: Text(
           aniversariante.nome,
           style: const TextStyle(fontWeight: FontWeight.w600),

@@ -1,5 +1,6 @@
 // lib/main.dart
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'screens/auth_wrapper.dart';
 import 'services/notification_service.dart';
 
@@ -17,10 +18,13 @@ class MeuApp extends StatelessWidget {
     return MaterialApp(
       title: 'Lembretes de Aniversários',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        primarySwatch: Colors.blueGrey,
-        useMaterial3: true,
-      ),
+      theme: ThemeData(primarySwatch: Colors.blueGrey, useMaterial3: true),
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      supportedLocales: const [Locale('pt', 'BR')],
       home: const AuthWrapper(),
     );
   }
