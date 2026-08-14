@@ -1,15 +1,13 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
-import 'package:sqflite/sqflite.dart';
-import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import '../database/db_helper.dart';
 import '../services/auth_service.dart';
 import 'login_page.dart';
 
 class ConfiguracoesPage extends StatelessWidget {
   const ConfiguracoesPage({super.key});
 
-  /// Função para confirmar, limpar os dados locais e realizar o Logout
   void _confirmarLogout(BuildContext context) {
     showDialog(
       context: context,
@@ -30,18 +28,13 @@ class ConfiguracoesPage extends StatelessWidget {
               foregroundColor: Colors.white,
             ),
             onPressed: () async {
-              Navigator.pop(ctx); // Fecha o modal
+              Navigator.pop(ctx);
 
               try {
-                // 1. Fecha conexões abertas do SQLite e apaga o arquivo do banco local
-                var databasesPath = await getDatabasesPath();
-                String path = p.join(databasesPath, 'aniversarios.db');
-                var dbFile = File(path);
-                if (await dbFile.exists()) {
-                  await dbFile.delete();
-                }
+                // 1. Fecha conexões do SQLite e apaga o arquivo do banco local
+                await DBHelper.fecharEApagarBanco();
 
-                // 2. Apaga o registo de sincronização diária da conta anterior
+                // 2. Apaga o arquivo de controle de sincronização diária
                 final diretorio = await getApplicationDocumentsDirectory();
                 final arquivoSync = File('${diretorio.path}/ultima_sync.txt');
                 if (await arquivoSync.exists()) {
@@ -51,11 +44,10 @@ class ConfiguracoesPage extends StatelessWidget {
                 print("Erro ao limpar dados locais no logout: $e");
               }
 
-              // 3. Desconecta a conta Google
+              // 3. Desconecta totalmente do Google
               await AuthService.fazerLogout();
 
               if (context.mounted) {
-                // Redireciona para a tela de Login limpando o histórico
                 Navigator.pushAndRemoveUntil(
                   context,
                   MaterialPageRoute(builder: (context) => const LoginPage()),

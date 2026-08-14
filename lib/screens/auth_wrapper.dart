@@ -3,8 +3,6 @@ import '../services/auth_service.dart';
 import 'home_page.dart';
 import 'login_page.dart';
 
-/// Widget responsável por checar a sessão do usuário na inicialização
-/// e redirecioná-lo para a tela correta (HomePage ou LoginPage).
 class AuthWrapper extends StatefulWidget {
   const AuthWrapper({super.key});
 
@@ -13,37 +11,48 @@ class AuthWrapper extends StatefulWidget {
 }
 
 class _AuthWrapperState extends State<AuthWrapper> {
-  bool _checandoSessao = true;
-  bool _estaLogado = false;
+  bool _verificando = true;
+  bool _logado = false;
 
   @override
   void initState() {
     super.initState();
-    _verificarAutenticacao();
+    _verificarSessao();
   }
 
-  Future<void> _verificarAutenticacao() async {
-    final conta = await AuthService.fazerLoginSilencioso();
-
-    if (mounted) {
-      setState(() {
-        _estaLogado = conta != null;
-        _checandoSessao = false;
-      });
+  Future<void> _verificarSessao() async {
+    try {
+      final usuario = await AuthService.tentarLoginSilencioso();
+      if (mounted) {
+        setState(() {
+          _logado = usuario != null;
+          _verificando = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _logado = false;
+          _verificando = false;
+        });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_checandoSessao) {
-      return Scaffold(
-        backgroundColor: Colors.blueGrey[900],
-        body: const Center(
-          child: CircularProgressIndicator(color: Colors.white),
+    if (_verificando) {
+      return const Scaffold(
+        body: Center(
+          child: CircularProgressIndicator(),
         ),
       );
     }
 
-    return _estaLogado ? const HomePage() : const LoginPage();
+    if (_logado) {
+      return const HomePage();
+    } else {
+      return const LoginPage();
+    }
   }
 }

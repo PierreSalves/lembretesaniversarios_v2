@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 
@@ -5,7 +6,7 @@ class DBHelper {
   static Database? _db;
 
   static Future<Database> get database async {
-    if (_db != null) return _db!;
+    if (_db != null && _db!.isOpen) return _db!;
     _db = await _initDB();
     return _db!;
   }
@@ -34,15 +35,51 @@ class DBHelper {
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
-          try { await db.execute("ALTER TABLE aniversariantes ADD COLUMN drive_file_id_foto TEXT;"); } catch (_) {}
-          try { await db.execute("ALTER TABLE aniversariantes ADD COLUMN mensagem_customizada TEXT;"); } catch (_) {}
+          try {
+            await db.execute(
+              "ALTER TABLE aniversariantes ADD COLUMN drive_file_id_foto TEXT;",
+            );
+          } catch (_) {}
+          try {
+            await db.execute(
+              "ALTER TABLE aniversariantes ADD COLUMN mensagem_customizada TEXT;",
+            );
+          } catch (_) {}
         }
         if (oldVersion < 3) {
-          try { await db.execute("ALTER TABLE aniversariantes ADD COLUMN excluido INTEGER DEFAULT 0;"); } catch (_) {}
-          try { await db.execute("ALTER TABLE aniversariantes ADD COLUMN data_atualizacao INTEGER DEFAULT 0;"); } catch (_) {}
+          try {
+            await db.execute(
+              "ALTER TABLE aniversariantes ADD COLUMN excluido INTEGER DEFAULT 0;",
+            );
+          } catch (_) {}
+          try {
+            await db.execute(
+              "ALTER TABLE aniversariantes ADD COLUMN data_atualizacao INTEGER DEFAULT 0;",
+            );
+          } catch (_) {}
         }
       },
     );
+  }
+
+  static Future<void> fecharEApagarBanco() async {
+    if (_db != null) {
+      if (_db!.isOpen) {
+        await _db!.close();
+      }
+      _db = null;
+    }
+
+    try {
+      String dbPath = await getDatabasesPath();
+      String path = join(dbPath, 'aniversarios.db');
+      File dbFile = File(path);
+      if (await dbFile.exists()) {
+        await dbFile.delete();
+      }
+    } catch (e) {
+      print("Erro ao apagar o arquivo do banco: $e");
+    }
   }
 
   static Future<int> insert(Map<String, dynamic> row) async {
@@ -63,7 +100,6 @@ class DBHelper {
     );
   }
 
-  /// Exclusão Lógica (Soft Delete): Apenas marca como excluído e atualiza o timestamp
   static Future<int> softDelete(int id) async {
     Database db = await database;
     return await db.update(
@@ -77,7 +113,6 @@ class DBHelper {
     );
   }
 
-  /// Retorna apenas os registos ativos (não excluídos) ordenados
   static Future<List<Map<String, dynamic>>> queryAll() async {
     Database db = await database;
     return await db.query(
@@ -88,7 +123,6 @@ class DBHelper {
     );
   }
 
-  /// Retorna TUDO (incluindo excluídos) para uso exclusivo do motor de Sincronização/Merge
   static Future<List<Map<String, dynamic>>> queryAllParaSincronizacao() async {
     Database db = await database;
     return await db.query('aniversariantes');
