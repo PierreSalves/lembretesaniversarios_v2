@@ -28,7 +28,7 @@ O aplicativo adota a arquitetura de **Zero Servidor Externo**. Isso garante o co
 
 ### 📄 Documentação Legal
 
-Para entender detalhadamente como suas permissões do Google e arquivos do Drive são gerenciados, consulte nossa [[Política de Privacidade](https://www.google.com/PRIVACY.md)](PRIVACY.md). 
+Para entender detalhadamente como suas permissões do Google e arquivos do Drive são gerenciados, consulte nossa [[Política de Privacidade][(https://github.com/PierreSalves/lembretesaniversarios_v2/wiki/Politica%E2%80%90de%E2%80%90Privacidade)]. 
 
 ### ✉️ Contato e Suporte
 
