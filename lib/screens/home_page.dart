@@ -33,10 +33,34 @@ class _HomePageState extends State<HomePage> {
   Future<void> _inicializarTelaLocal() async {
     setState(() => _carregando = true);
     await _carregarDados();
-    await _atualizarNotificacoes();
 
-    // Dispara a sincronização automática diária (se for a primeira vez hoje e houver net)
+    if (mounted) {
+      setState(() => _carregando = false);
+    }
+
+    _silenciarNotificacoesDeHoje();
     _verificarSincronizacaoDiariaAutomatica();
+  }
+
+  Future<void> _silenciarNotificacoesDeHoje() async {
+    final hoje = DateTime.now();
+
+    // Filtra apenas os aniversariantes do dia exato
+    final aniversariantesHoje = _lista
+        .where((item) => item.dia == hoje.day && item.mes == hoje.month)
+        .toList();
+
+    // Reagenda apenas os de hoje (o NotificationService cuidará de jogar para o ano que vem)
+    for (var aniversariante in aniversariantesHoje) {
+      if (aniversariante.id != null) {
+        await NotificationService.agendarNotificacoesAniversario(
+          idBase: aniversariante.id!,
+          nome: aniversariante.nome,
+          dia: aniversariante.dia,
+          mes: aniversariante.mes,
+        );
+      }
+    }
   }
 
   /// Regra: Sincroniza automaticamente apenas na primeira abertura do app no dia
@@ -59,7 +83,9 @@ class _HomePageState extends State<HomePage> {
       if (ultimaDataSync != hojeStr) {
         bool sucesso = await DriveService.sincronizarComDrive();
         if (sucesso) {
-          await arquivo.writeAsString(hojeStr); // Registra que já sincronizou hoje
+          await arquivo.writeAsString(
+            hojeStr,
+          ); // Registra que já sincronizou hoje
           await _carregarDados();
           await _atualizarNotificacoes();
           debugPrint("Sincronização automática diária concluída com sucesso.");
@@ -87,20 +113,26 @@ class _HomePageState extends State<HomePage> {
         await _atualizarNotificacoes();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Sincronização concluída com sucesso!')),
+            const SnackBar(
+              content: Text('Sincronização concluída com sucesso!'),
+            ),
           );
         }
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Erro ao sincronizar com o Google Drive.')),
+            const SnackBar(
+              content: Text('Erro ao sincronizar com o Google Drive.'),
+            ),
           );
         }
       }
     } else {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Sem conexão à internet para sincronizar.')),
+          const SnackBar(
+            content: Text('Sem conexão à internet para sincronizar.'),
+          ),
         );
       }
     }
@@ -182,17 +214,16 @@ class _HomePageState extends State<HomePage> {
   void _abrirConfiguracoes() {
     Navigator.push(
       context,
-      MaterialPageRoute(
-        builder: (context) => const ConfiguracoesPage(),
-      ),
+      MaterialPageRoute(builder: (context) => const ConfiguracoesPage()),
     ).then((_) => _inicializarTelaLocal());
   }
 
   @override
   Widget build(BuildContext context) {
     final hoje = DateTime.now();
-    final aniversariantesHoje =
-        _lista.where((a) => a.dia == hoje.day && a.mes == hoje.month).toList();
+    final aniversariantesHoje = _lista
+        .where((a) => a.dia == hoje.day && a.mes == hoje.month)
+        .toList();
 
     return Scaffold(
       appBar: AppBar(
@@ -249,7 +280,10 @@ class _HomePageState extends State<HomePage> {
                         ],
                         const Text(
                           '📋 Todos os Aniversariantes',
-                          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                         const SizedBox(height: 8),
                         ..._lista.map(

@@ -1,24 +1,43 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
+import 'dart:io';
 
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _notificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
-  /// Inicializa o plugin de notificações
+  /// Inicializa o plugin de notificações e fusos horários
   static Future<void> init() async {
+    // 1. Inicializa o banco de dados de fusos horários (Essencial para o zonedSchedule)
+    tz.initializeTimeZones();
+
     const AndroidInitializationSettings initializationSettingsAndroid =
-        AndroidInitializationSettings('@mipmap/ic_launcher');
+        AndroidInitializationSettings('@mipmap/launcher_icon');
 
     const InitializationSettings initializationSettings =
-        InitializationSettings(
-      android: initializationSettingsAndroid,
-    );
+        InitializationSettings(android: initializationSettingsAndroid);
 
-    // 📌 Parâmetro nomeado 'settings:' exigido pelas versões mais recentes
-    await _notificationsPlugin.initialize(
-      settings: initializationSettings,
-    );
+    await _notificationsPlugin.initialize(settings: initializationSettings);
+
+    // 2. Solicita permissão de notificações explicitamente no Android 13+
+    if (Platform.isAndroid) {
+      final AndroidFlutterLocalNotificationsPlugin? androidImplementation =
+          _notificationsPlugin
+              .resolvePlatformSpecificImplementation<
+                AndroidFlutterLocalNotificationsPlugin
+              >();
+
+      await android_solicitarPermissao(androidImplementation);
+    }
+  }
+
+  static Future<void> android_solicitarPermissao(
+    AndroidFlutterLocalNotificationsPlugin? androidImplementation,
+  ) async {
+    if (androidImplementation != null) {
+      await androidImplementation.requestNotificationsPermission();
+    }
   }
 
   /// Cancela todos os agendamentos de notificações
@@ -36,18 +55,21 @@ class NotificationService {
     final agora = DateTime.now();
     var dataAniversario = DateTime(agora.year, mes, dia);
 
+    bool eHoje = (dia == agora.day && mes == agora.month);
+
     // Se a data deste ano já passou, agenda para o próximo ano
-    if (dataAniversario.isBefore(agora)) {
+    if (dataAniversario.isBefore(agora) || eHoje) {
       dataAniversario = DateTime(agora.year + 1, mes, dia);
     }
 
-    const AndroidNotificationDetails androidDetails = AndroidNotificationDetails(
-      'lembretes_aniversario_channel',
-      'Lembretes de Aniversários',
-      channelDescription: 'Notificações de lembrete de aniversariantes',
-      importance: Importance.max,
-      priority: Priority.high,
-    );
+    const AndroidNotificationDetails androidDetails =
+        AndroidNotificationDetails(
+          'lembretes_aniversario_channel',
+          'Lembretes de Aniversários',
+          channelDescription: 'Notificações de lembrete de aniversariantes',
+          importance: Importance.max,
+          priority: Priority.high,
+        );
 
     const NotificationDetails notificationDetails = NotificationDetails(
       android: androidDetails,
@@ -68,16 +90,17 @@ class NotificationService {
 
       final tzData = tz.TZDateTime.from(dataNotificacao, tz.local);
 
-      // 📌 Parâmetros estritamente nomeados para compatibilidade com versões novas
-      await _notificationsPlugin.zonedSchedule(
-        id: idBase * 100 + i,
-        title: '🎉 Aniversário Hoje!',
-        body: 'Hoje é o aniversário de $nome! Lembre-se de dar os parabéns.',
-        scheduledDate: tzData,
-        notificationDetails: notificationDetails,
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-        matchDateTimeComponents: DateTimeComponents.time,
-      );
+      // Só agenda se a data/hora for no futuro
+      if (tzData.isAfter(tz.TZDateTime.now(tz.local))) {
+        await _notificationsPlugin.zonedSchedule(
+          id: idBase * 100 + i,
+          title: '🎉 Aniversário Hoje!',
+          body: 'Hoje é o aniversário de $nome! Lembre-se de dar os parabéns.',
+          scheduledDate: tzData,
+          notificationDetails: notificationDetails,
+          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle
+        );
+      }
     }
   }
 }
