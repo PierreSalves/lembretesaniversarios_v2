@@ -88,11 +88,11 @@ class _HomePageState extends State<HomePage> {
           ); // Registra que já sincronizou hoje
           await _carregarDados();
           await _atualizarNotificacoes();
-          debugPrint("Sincronização automática diária concluída com sucesso.");
+          // debugPrint("Sincronização automática diária concluída com sucesso.");
         }
       }
     } catch (e) {
-      debugPrint("Erro na sincronização automática diária: $e");
+      // debugPrint("Erro na sincronização automática diária: $e");
     }
   }
 

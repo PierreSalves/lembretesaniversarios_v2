@@ -102,7 +102,7 @@ class _CadastroPageState extends State<CadastroPage> {
         Navigator.pop(context, true);
       }
     } catch (e) {
-      debugPrint("Erro ao guardar aniversariante: $e");
+      // debugPrint("Erro ao guardar aniversariante: $e");
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Erro ao salvar no banco de dados: $e')),

@@ -56,7 +56,7 @@ class _LoginPageState extends State<LoginPage> {
         _exibirSnackBar('Login cancelado pelo utilizador.');
       }
     } catch (e) {
-      debugPrint("Erro no login: $e");
+      // debugPrint("Erro no login: $e");
       if (mounted) {
         _atualizarStatus(carregando: false);
         _exibirSnackBar('Erro ao realizar login: $e');
@@ -76,7 +76,7 @@ class _LoginPageState extends State<LoginPage> {
         await DriveService.sincronizarComDrive();
       }
     } catch (e) {
-      debugPrint("Erro na sincronização inicial: $e");
+      // debugPrint("Erro na sincronização inicial: $e");
     }
 
     if (mounted) {
