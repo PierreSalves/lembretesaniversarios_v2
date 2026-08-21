@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../models/aniversariante.dart';
 import '../repositories/aniversariante_repository.dart';
+import '../services/notification_service.dart';
 
 class CadastroPage extends StatefulWidget {
   final Aniversariante? aniversariante;
@@ -73,6 +74,28 @@ class _CadastroPageState extends State<CadastroPage> {
     }
   }
 
+  Aniversariante _construirAniversarianteFormulario() {
+    return Aniversariante(
+      id: widget.aniversariante?.id,
+      nome: _nomeController.text.trim(),
+      dia: _diaSelecionado!,
+      mes: _mesSelecionado!,
+      caminhoFoto: _caminhoFoto,
+      driveFileIdFoto: widget.aniversariante?.driveFileIdFoto,
+      mensagemCustomizada: _mensagemController.text.trim(),
+    );
+  }
+
+  Future<void> _salvarEPersistirNotificacao(Aniversariante novo) async {
+    final int idRetornado = await AniversarianteRepository.salvar(novo);
+    final aniversarianteSalvo = novo.id == null
+        ? novo.copyWith(id: idRetornado)
+        : novo;
+
+    // Atualiza pontualmente os 6 alarmes caso esteja nos próximos 30 dias
+    await NotificationService.atualizarNotificacaoAniversariante(aniversarianteSalvo);
+  }
+
   Future<void> _guardar() async {
     if (!_formKey.currentState!.validate()) return;
 
@@ -86,17 +109,8 @@ class _CadastroPageState extends State<CadastroPage> {
     }
 
     try {
-      final novoAniversariante = Aniversariante(
-        id: widget.aniversariante?.id,
-        nome: _nomeController.text.trim(),
-        dia: _diaSelecionado!,
-        mes: _mesSelecionado!,
-        caminhoFoto: _caminhoFoto,
-        driveFileIdFoto: widget.aniversariante?.driveFileIdFoto,
-        mensagemCustomizada: _mensagemController.text.trim(),
-      );
-
-      await AniversarianteRepository.salvar(novoAniversariante);
+      final novoAniversariante = _construirAniversarianteFormulario();
+      await _salvarEPersistirNotificacao(novoAniversariante);
 
       if (mounted) {
         Navigator.pop(context, true);

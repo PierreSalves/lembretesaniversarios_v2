@@ -1,12 +1,13 @@
-// lib/main.dart
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'screens/auth_wrapper.dart';
 import 'services/notification_service.dart';
+import 'services/workmanager_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await NotificationService.init();
+  await WorkmanagerService.inicializar();
   runApp(const MeuApp());
 }
 

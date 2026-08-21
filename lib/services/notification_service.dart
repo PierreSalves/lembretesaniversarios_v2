@@ -2,14 +2,16 @@ import 'dart:io';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
+import '../models/aniversariante.dart';
 
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _notificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
-  /// Horários diurnos padrão para emissão de lembretes (08h, 12h, 16h e 20h)
-  static const List<int> horariosLembrete = [8, 12, 16, 20];
+  /// Horários de agendamento de 4 em 4 horas iniciando às 00:00 (total de 6 notificações no dia)
+  static const List<int> horariosLembrete = [0, 4, 8, 12, 16, 20];
 
+  /// Inicializa o plugin de notificações e configurações de plataforma
   static Future<void> init() async {
     tz.initializeTimeZones();
 
@@ -32,6 +34,7 @@ class NotificationService {
     }
   }
 
+  /// Solicita permissão de notificação no Android 13+
   static Future<void> androidSolicitarPermissao(
     AndroidFlutterLocalNotificationsPlugin? androidImplementation,
   ) async {
@@ -40,12 +43,34 @@ class NotificationService {
     }
   }
 
-  /// Cancela todos os agendamentos de notificações
+  /// Cria os detalhes de configuração do canal de notificação no Android
+  static NotificationDetails _obterNotificationDetails() {
+    const AndroidNotificationDetails androidDetails =
+        AndroidNotificationDetails(
+          'lembretes_aniversario_channel',
+          'Lembretes de Aniversários',
+          channelDescription: 'Notificações de lembrete de aniversariantes',
+          importance: Importance.max,
+          priority: Priority.high,
+        );
+
+    return const NotificationDetails(android: androidDetails);
+  }
+
+  /// Cancela todos os agendamentos de notificações no dispositivo
   static Future<void> cancelarTodasNotificacoes() async {
     await _notificationsPlugin.cancelAll();
   }
 
-  /// Agenda lembretes nos horários estipulados para a data de aniversário
+  /// Cancela os 6 alarmes específicos associados ao ID de um aniversariante
+  static Future<void> cancelarNotificacoesDoAniversariante(int idBase) async {
+    for (int i = 0; i < horariosLembrete.length; i++) {
+      final int notificationId = idBase * 100 + i;
+      await _notificationsPlugin.cancel(id: notificationId);
+    }
+  }
+
+  /// Agenda as 6 notificações no dia do aniversário de uma pessoa
   static Future<void> agendarNotificacoesAniversario({
     required int idBase,
     required String nome,
@@ -60,18 +85,7 @@ class NotificationService {
       dataAniversario = DateTime(agora.year + 1, mes, dia);
     }
 
-    const AndroidNotificationDetails androidDetails =
-        AndroidNotificationDetails(
-          'lembretes_aniversario_channel',
-          'Lembretes de Aniversários',
-          channelDescription: 'Notificações de lembrete de aniversariantes',
-          importance: Importance.max,
-          priority: Priority.high,
-        );
-
-    const NotificationDetails notificationDetails = NotificationDetails(
-      android: androidDetails,
-    );
+    final notificationDetails = _obterNotificationDetails();
 
     for (int i = 0; i < horariosLembrete.length; i++) {
       final hora = horariosLembrete[i];
@@ -85,7 +99,7 @@ class NotificationService {
 
       final tzData = tz.TZDateTime.from(dataNotificacao, tz.local);
 
-      // Só agenda se a data/hora for no futuro
+      // Agenda apenas se o horário for futuro
       if (tzData.isAfter(tz.TZDateTime.now(tz.local))) {
         await _notificationsPlugin.zonedSchedule(
           id: idBase * 100 + i,
@@ -96,6 +110,25 @@ class NotificationService {
           androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
         );
       }
+    }
+  }
+
+  /// Atualiza pontualmente os alarmes de um aniversariante com a regra dos 30 dias:
+  /// Cancela alarmes anteriores e, se o aniversário estiver nos próximos 30 dias, agenda as 6 notificações
+  static Future<void> atualizarNotificacaoAniversariante(
+    Aniversariante aniversariante,
+  ) async {
+    if (aniversariante.id == null) return;
+
+    await cancelarNotificacoesDoAniversariante(aniversariante.id!);
+
+    if (aniversariante.diasAteProximoAniversario <= 30) {
+      await agendarNotificacoesAniversario(
+        idBase: aniversariante.id!,
+        nome: aniversariante.nome,
+        dia: aniversariante.dia,
+        mes: aniversariante.mes,
+      );
     }
   }
 }

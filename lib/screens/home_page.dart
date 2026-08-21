@@ -43,7 +43,6 @@ class _HomePageState extends State<HomePage> {
     final sincronizou = await DriveService.sincronizarSeNecessarioHoje();
     if (sincronizou) {
       await _carregarDados();
-      await _atualizarNotificacoes();
       debugPrint("Sincronização automática diária concluída.");
     }
   }
@@ -55,7 +54,6 @@ class _HomePageState extends State<HomePage> {
       if (sucesso) {
         await DriveService.marcarSincronizacaoFeitaHoje();
         await _carregarDados();
-        await _atualizarNotificacoes();
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
@@ -93,23 +91,8 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  Future<void> _atualizarNotificacoes() async {
-    await NotificationService.cancelarTodasNotificacoes();
-    for (var item in _lista) {
-      if (item.id != null) {
-        await NotificationService.agendarNotificacoesAniversario(
-          idBase: item.id!,
-          nome: item.nome,
-          dia: item.dia,
-          mes: item.mes,
-        );
-      }
-    }
-  }
-
-  /// Exclusão Lógica instantânea offline-first
-  Future<void> _deletarAniversariante(Aniversariante item) async {
-    final confirmar = await showDialog<bool>(
+  Future<bool?> _solicitarConfirmacaoExclusao(Aniversariante item) {
+    return showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Excluir Aniversariante'),
@@ -126,9 +109,15 @@ class _HomePageState extends State<HomePage> {
         ],
       ),
     );
+  }
+
+  /// Exclusão Lógica offline-first com cancelamento de notificações
+  Future<void> _deletarAniversariante(Aniversariante item) async {
+    final confirmar = await _solicitarConfirmacaoExclusao(item);
 
     if (confirmar == true && item.id != null) {
       await AniversarianteRepository.excluir(item.id!);
+      await NotificationService.cancelarNotificacoesDoAniversariante(item.id!);
 
       if (await NetworkService.temConexaoInternet()) {
         DriveService.fazerUploadBackup().catchError((_) {});

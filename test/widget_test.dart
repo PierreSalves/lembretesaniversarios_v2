@@ -1,5 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:lembretesaniversarios/models/aniversariante.dart';
+import 'package:lembretesaniversarios/services/notification_service.dart';
+import 'package:lembretesaniversarios/services/workmanager_service.dart';
 
 void main() {
   group('Aniversariante Model Tests', () {
@@ -50,6 +52,19 @@ void main() {
       );
 
       expect(aniversariante.proximaData.year, equals(anoEsperado));
+    });
+  });
+
+  group('Notification and Workmanager Configuration Tests', () {
+    test('Horarios de notificacao contem exatamente 6 horarios de 4 em 4 horas comecando em 00h', () {
+      expect(NotificationService.horariosLembrete, equals([0, 4, 8, 12, 16, 20]));
+      expect(NotificationService.horariosLembrete.length, equals(6));
+    });
+
+    test('Calculo de delay para madrugada sempre retorna duracao positiva no intervalo de 24h', () {
+      final delay = calcularDelayParaProximaMadrugada(horaAlvo: 3);
+      expect(delay.isNegative, isFalse);
+      expect(delay.inHours <= 24, isTrue);
     });
   });
 }
