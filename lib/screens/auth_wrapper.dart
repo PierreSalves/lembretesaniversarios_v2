@@ -29,7 +29,8 @@ class _AuthWrapperState extends State<AuthWrapper> {
           _verificando = false;
         });
       }
-    } catch (_) {
+    } catch (e) {
+      debugPrint('Erro ao verificar sessão: $e');
       if (mounted) {
         setState(() {
           _logado = false;

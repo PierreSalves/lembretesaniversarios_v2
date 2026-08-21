@@ -1,26 +1,26 @@
+import 'dart:io';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
-import 'dart:io';
 
 class NotificationService {
   static final FlutterLocalNotificationsPlugin _notificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
-  /// Inicializa o plugin de notificações e fusos horários
+  /// Horários diurnos padrão para emissão de lembretes (08h, 12h, 16h e 20h)
+  static const List<int> horariosLembrete = [8, 12, 16, 20];
+
   static Future<void> init() async {
-    // 1. Inicializa o banco de dados de fusos horários (Essencial para o zonedSchedule)
     tz.initializeTimeZones();
 
     const AndroidInitializationSettings initializationSettingsAndroid =
-        AndroidInitializationSettings('@mipmap/launcher_icon');
+        AndroidInitializationSettings('@drawable/ic_notif');
 
     const InitializationSettings initializationSettings =
         InitializationSettings(android: initializationSettingsAndroid);
 
     await _notificationsPlugin.initialize(settings: initializationSettings);
 
-    // 2. Solicita permissão de notificações explicitamente no Android 13+
     if (Platform.isAndroid) {
       final AndroidFlutterLocalNotificationsPlugin? androidImplementation =
           _notificationsPlugin
@@ -28,11 +28,11 @@ class NotificationService {
                 AndroidFlutterLocalNotificationsPlugin
               >();
 
-      await android_solicitarPermissao(androidImplementation);
+      await androidSolicitarPermissao(androidImplementation);
     }
   }
 
-  static Future<void> android_solicitarPermissao(
+  static Future<void> androidSolicitarPermissao(
     AndroidFlutterLocalNotificationsPlugin? androidImplementation,
   ) async {
     if (androidImplementation != null) {
@@ -45,7 +45,7 @@ class NotificationService {
     await _notificationsPlugin.cancelAll();
   }
 
-  /// Agenda os lembretes de 2 em 2 horas (das 06h às 20h) para a data de aniversário
+  /// Agenda lembretes nos horários estipulados para a data de aniversário
   static Future<void> agendarNotificacoesAniversario({
     required int idBase,
     required String nome,
@@ -53,12 +53,10 @@ class NotificationService {
     required int mes,
   }) async {
     final agora = DateTime.now();
+    final hojeInicio = DateTime(agora.year, agora.month, agora.day);
+
     var dataAniversario = DateTime(agora.year, mes, dia);
-
-    bool eHoje = (dia == agora.day && mes == agora.month);
-
-    // Se a data deste ano já passou, agenda para o próximo ano
-    if (dataAniversario.isBefore(agora) || eHoje) {
+    if (dataAniversario.isBefore(hojeInicio)) {
       dataAniversario = DateTime(agora.year + 1, mes, dia);
     }
 
@@ -75,11 +73,8 @@ class NotificationService {
       android: androidDetails,
     );
 
-    // Horários para notificar: de 2h em 2h das 06:00 às 20:00
-    final horarios = [6, 8, 10, 12, 14, 16, 18, 20];
-
-    for (int i = 0; i < horarios.length; i++) {
-      final hora = horarios[i];
+    for (int i = 0; i < horariosLembrete.length; i++) {
+      final hora = horariosLembrete[i];
       final dataNotificacao = DateTime(
         dataAniversario.year,
         dataAniversario.month,
@@ -98,7 +93,7 @@ class NotificationService {
           body: 'Hoje é o aniversário de $nome! Lembre-se de dar os parabéns.',
           scheduledDate: tzData,
           notificationDetails: notificationDetails,
-          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle
+          androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
         );
       }
     }

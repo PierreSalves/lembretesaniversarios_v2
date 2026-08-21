@@ -1,7 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:io';
-import 'package:path_provider/path_provider.dart';
-import '../database/db_helper.dart';
 import '../services/auth_service.dart';
 import 'login_page.dart';
 
@@ -30,22 +27,7 @@ class ConfiguracoesPage extends StatelessWidget {
             onPressed: () async {
               Navigator.pop(ctx);
 
-              try {
-                // 1. Fecha conexões do SQLite e apaga o arquivo do banco local
-                await DBHelper.fecharEApagarBanco();
-
-                // 2. Apaga o arquivo de controle de sincronização diária
-                final diretorio = await getApplicationDocumentsDirectory();
-                final arquivoSync = File('${diretorio.path}/ultima_sync.txt');
-                if (await arquivoSync.exists()) {
-                  await arquivoSync.delete();
-                }
-              } catch (e) {
-                print("Erro ao limpar dados locais no logout: $e");
-              }
-
-              // 3. Desconecta totalmente do Google
-              await AuthService.fazerLogout();
+              await AuthService.encerrarSessaoELimparDadosLocais();
 
               if (context.mounted) {
                 Navigator.pushAndRemoveUntil(
@@ -161,7 +143,7 @@ class ConfiguracoesPage extends StatelessWidget {
           const ListTile(
             leading: Icon(Icons.info_outline),
             title: Text('Versão do Aplicativo'),
-            subtitle: Text('1.0.3'),
+            subtitle: Text('1.0.6'),
           ),
         ],
       ),

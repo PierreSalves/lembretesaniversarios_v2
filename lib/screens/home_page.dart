@@ -1,10 +1,8 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
-import '../database/db_helper.dart';
 import '../models/aniversariante.dart';
-import '../services/auth_service.dart';
+import '../repositories/aniversariante_repository.dart';
 import '../services/drive_service.dart';
+import '../services/network_service.dart';
 import '../services/notification_service.dart';
 import '../widgets/card_aniversariante.dart';
 import '../widgets/card_aniversariante_do_dia.dart';
@@ -28,8 +26,8 @@ class _HomePageState extends State<HomePage> {
     _inicializarTelaLocal();
   }
 
-  /// Inicialização Local-First: Carrega do SQLite instantaneamente
-  /// e verifica se deve fazer a sincronização automática diária em segundo plano.
+  /// Inicialização Local-First: Carrega do repositório instantaneamente
+  /// e dispara a sincronização diária se for a primeira abertura do dia.
   Future<void> _inicializarTelaLocal() async {
     setState(() => _carregando = true);
     await _carregarDados();
@@ -38,77 +36,24 @@ class _HomePageState extends State<HomePage> {
       setState(() => _carregando = false);
     }
 
-    _silenciarNotificacoesDeHoje();
     _verificarSincronizacaoDiariaAutomatica();
   }
 
-  Future<void> _silenciarNotificacoesDeHoje() async {
-    final hoje = DateTime.now();
-
-    // Filtra apenas os aniversariantes do dia exato
-    final aniversariantesHoje = _lista
-        .where((item) => item.dia == hoje.day && item.mes == hoje.month)
-        .toList();
-
-    // Reagenda apenas os de hoje (o NotificationService cuidará de jogar para o ano que vem)
-    for (var aniversariante in aniversariantesHoje) {
-      if (aniversariante.id != null) {
-        await NotificationService.agendarNotificacoesAniversario(
-          idBase: aniversariante.id!,
-          nome: aniversariante.nome,
-          dia: aniversariante.dia,
-          mes: aniversariante.mes,
-        );
-      }
-    }
-  }
-
-  /// Regra: Sincroniza automaticamente apenas na primeira abertura do app no dia
   Future<void> _verificarSincronizacaoDiariaAutomatica() async {
-    try {
-      if (!await AuthService.temConexaoInternet()) return;
-
-      final diretorio = await getApplicationDocumentsDirectory();
-      final arquivo = File('${diretorio.path}/ultima_sync.txt');
-
-      // Formato da data atual: "YYYY-MM-DD" (ex: "2026-06-07")
-      final hojeStr = DateTime.now().toIso8601String().substring(0, 10);
-
-      String? ultimaDataSync;
-      if (await arquivo.exists()) {
-        ultimaDataSync = await arquivo.readAsString();
-      }
-
-      // Se ainda não sincronizou hoje, executa a sincronização silenciosa
-      if (ultimaDataSync != hojeStr) {
-        bool sucesso = await DriveService.sincronizarComDrive();
-        if (sucesso) {
-          await arquivo.writeAsString(
-            hojeStr,
-          ); // Registra que já sincronizou hoje
-          await _carregarDados();
-          await _atualizarNotificacoes();
-          // debugPrint("Sincronização automática diária concluída com sucesso.");
-        }
-      }
-    } catch (e) {
-      // debugPrint("Erro na sincronização automática diária: $e");
+    final sincronizou = await DriveService.sincronizarSeNecessarioHoje();
+    if (sincronizou) {
+      await _carregarDados();
+      await _atualizarNotificacoes();
+      debugPrint("Sincronização automática diária concluída.");
     }
   }
 
-  /// Acionado manualmente quando o utilizador faz Pull-to-Refresh (arrasta para baixo)
+  /// Acionado manualmente quando o usuário faz Pull-to-Refresh
   Future<void> _sincronizarManualmente() async {
-    if (await AuthService.temConexaoInternet()) {
+    if (await NetworkService.temConexaoInternet()) {
       bool sucesso = await DriveService.sincronizarComDrive();
       if (sucesso) {
-        // Atualiza também o registo da data diária para evitar duplicar esforço
-        try {
-          final diretorio = await getApplicationDocumentsDirectory();
-          final arquivo = File('${diretorio.path}/ultima_sync.txt');
-          final hojeStr = DateTime.now().toIso8601String().substring(0, 10);
-          await arquivo.writeAsString(hojeStr);
-        } catch (_) {}
-
+        await DriveService.marcarSincronizacaoFeitaHoje();
         await _carregarDados();
         await _atualizarNotificacoes();
         if (mounted) {
@@ -139,9 +84,7 @@ class _HomePageState extends State<HomePage> {
   }
 
   Future<void> _carregarDados() async {
-    final dados = await DBHelper.queryAll();
-    final lista = dados.map((item) => Aniversariante.fromMap(item)).toList();
-
+    final lista = await AniversarianteRepository.obterTodos();
     if (mounted) {
       setState(() {
         _lista = lista;
@@ -185,9 +128,9 @@ class _HomePageState extends State<HomePage> {
     );
 
     if (confirmar == true && item.id != null) {
-      await DBHelper.softDelete(item.id!);
+      await AniversarianteRepository.excluir(item.id!);
 
-      if (await AuthService.temConexaoInternet()) {
+      if (await NetworkService.temConexaoInternet()) {
         DriveService.fazerUploadBackup().catchError((_) {});
       }
 
@@ -204,7 +147,7 @@ class _HomePageState extends State<HomePage> {
     );
 
     if (alterou == true) {
-      if (await AuthService.temConexaoInternet()) {
+      if (await NetworkService.temConexaoInternet()) {
         DriveService.fazerUploadBackup().catchError((_) {});
       }
       await _inicializarTelaLocal();
@@ -220,10 +163,7 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
-    final hoje = DateTime.now();
-    final aniversariantesHoje = _lista
-        .where((a) => a.dia == hoje.day && a.mes == hoje.month)
-        .toList();
+    final aniversariantesHoje = _lista.where((a) => a.eHoje).toList();
 
     return Scaffold(
       appBar: AppBar(

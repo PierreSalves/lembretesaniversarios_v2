@@ -1,8 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import '../database/db_helper.dart';
 import '../models/aniversariante.dart';
+import '../repositories/aniversariante_repository.dart';
 
 class CadastroPage extends StatefulWidget {
   final Aniversariante? aniversariante;
@@ -48,6 +48,13 @@ class _CadastroPageState extends State<CadastroPage> {
     }
   }
 
+  @override
+  void dispose() {
+    _nomeController.dispose();
+    _mensagemController.dispose();
+    super.dispose();
+  }
+
   Future<void> _tirarFotoCamera() async {
     final XFile? foto = await _picker.pickImage(source: ImageSource.camera);
     if (foto != null) {
@@ -89,20 +96,13 @@ class _CadastroPageState extends State<CadastroPage> {
         mensagemCustomizada: _mensagemController.text.trim(),
       );
 
-      if (widget.aniversariante == null) {
-        await DBHelper.insert(novoAniversariante.toMap());
-      } else {
-        await DBHelper.update(
-          novoAniversariante.toMap(),
-          widget.aniversariante!.id!,
-        );
-      }
+      await AniversarianteRepository.salvar(novoAniversariante);
 
       if (mounted) {
         Navigator.pop(context, true);
       }
     } catch (e) {
-      // debugPrint("Erro ao guardar aniversariante: $e");
+      debugPrint("Erro ao guardar aniversariante: $e");
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Erro ao salvar no banco de dados: $e')),
@@ -169,7 +169,7 @@ class _CadastroPageState extends State<CadastroPage> {
               ),
               const SizedBox(height: 16),
 
-              // Botões separados lado a lado para Câmara e Galeria
+              // Botões separados lado a lado para Câmera e Galeria
               Row(
                 children: [
                   Expanded(

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:googleapis/drive/v3.dart' as drive;
 import 'package:extension_google_sign_in_as_googleapis_auth/extension_google_sign_in_as_googleapis_auth.dart';
@@ -6,11 +7,14 @@ import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'auth_service.dart';
+import 'network_service.dart';
 import '../database/db_helper.dart';
 
 class DriveService {
   static const String _nomeArquivoBackup = 'lembretes_aniversarios_backup.db';
+  static const String _nomeArquivoUltimaSync = 'ultima_sync.txt';
 
+  /// Obtém o cliente autenticado do Google Drive
   static Future<drive.DriveApi?> _obterDriveApi() async {
     try {
       final GoogleSignInAccount? usuario = AuthService.usuarioAtual;
@@ -21,12 +25,12 @@ class DriveService {
 
       return drive.DriveApi(authClient);
     } catch (e) {
-      print("Erro ao autenticar no Google Drive: $e");
+      debugPrint("Erro ao autenticar no Google Drive: $e");
       return null;
     }
   }
 
-  /// Faz o Upload de uma imagem individual para a pasta privada do Drive (appDataFolder)
+  /// Faz o upload de uma imagem individual para a pasta privada do Drive (appDataFolder)
   static Future<String?> fazerUploadImagem(File arquivoLocal) async {
     try {
       final driveApi = await _obterDriveApi();
@@ -35,14 +39,14 @@ class DriveService {
       String nomeArquivoUnico = 'foto_${DateTime.now().millisecondsSinceEpoch}.jpg';
       var media = drive.Media(arquivoLocal.openRead(), await arquivoLocal.length());
 
-      var driveFile = drive.File();
-      driveFile.name = nomeArquivoUnico;
-      driveFile.parents = ['appDataFolder'];
+      var driveFile = drive.File()
+        ..name = nomeArquivoUnico
+        ..parents = ['appDataFolder'];
 
       var arquivoCriado = await driveApi.files.create(driveFile, uploadMedia: media);
       return arquivoCriado.id;
     } catch (e) {
-      print("Erro ao enviar imagem para o Drive: $e");
+      debugPrint("Erro ao enviar imagem para o Drive: $e");
       return null;
     }
   }
@@ -58,7 +62,6 @@ class DriveService {
         downloadOptions: drive.DownloadOptions.fullMedia,
       ) as drive.Media;
 
-      // Define o diretório de documentos permanente do app no aparelho
       final diretorioApp = await getApplicationDocumentsDirectory();
       String caminhoLocal = p.join(diretorioApp.path, 'foto_peristida_$fileId.jpg');
       var arquivoLocal = File(caminhoLocal);
@@ -71,11 +74,12 @@ class DriveService {
 
       return arquivoLocal.path;
     } catch (e) {
-      print("Erro ao baixar imagem do Drive: $e");
+      debugPrint("Erro ao baixar imagem do Drive: $e");
       return null;
     }
   }
 
+  /// Envia o banco de dados SQLite local como arquivo de backup no Google Drive
   static Future<void> fazerUploadBackup() async {
     try {
       final driveApi = await _obterDriveApi();
@@ -98,149 +102,231 @@ class DriveService {
         String fileId = listaArquivos.files!.first.id!;
         await driveApi.files.update(drive.File(), fileId, uploadMedia: media);
       } else {
-        var driveFile = drive.File();
-        driveFile.name = _nomeArquivoBackup;
-        driveFile.parents = ['appDataFolder'];
+        var driveFile = drive.File()
+          ..name = _nomeArquivoBackup
+          ..parents = ['appDataFolder'];
         await driveApi.files.create(driveFile, uploadMedia: media);
       }
     } catch (e) {
-      print("Erro ao realizar upload para o Drive: $e");
+      debugPrint("Erro ao realizar upload para o Drive: $e");
     }
   }
 
-  /// Sincronização Inteligente Local-First: Registos primeiro, depois tratamento de imagens
-  static Future<bool> sincronizarComDrive() async {
+  /// Baixa os registros do backup remoto da nuvem para memória
+  static Future<List<Map<String, dynamic>>?> _baixarRegistrosRemotos(drive.DriveApi driveApi) async {
     try {
-      final driveApi = await _obterDriveApi();
-      if (driveApi == null) return false;
-
-      // 🔴 PASSO 1: MERGE DOS REGISTOS (Prioridade Máxima)
-      // Baixa o banco de dados da nuvem primeiro para garantir que a lista de aniversariantes esteja atualizada
       final listaArquivos = await driveApi.files.list(
         spaces: 'appDataFolder',
         q: "name = '$_nomeArquivoBackup'",
       );
 
+      if (listaArquivos.files == null || listaArquivos.files!.isEmpty) {
+        return null;
+      }
+
+      String fileId = listaArquivos.files!.first.id!;
+      drive.Media arquivoDrive = await driveApi.files.get(
+        fileId,
+        downloadOptions: drive.DownloadOptions.fullMedia,
+      ) as drive.Media;
+
+      var databasesPath = await getDatabasesPath();
+      String tempPath = p.join(databasesPath, 'temp_nuvem.db');
+      var arquivoTemp = File(tempPath);
+
+      List<int> dataBytes = [];
+      await for (var chunk in arquivoDrive.stream) {
+        dataBytes.addAll(chunk);
+      }
+      await arquivoTemp.writeAsBytes(dataBytes);
+
+      Database dbNuvem = await openDatabase(tempPath);
+      List<Map<String, dynamic>> registrosNuvem = await dbNuvem.query('aniversariantes');
+      await dbNuvem.close();
+
+      if (await arquivoTemp.exists()) {
+        await arquivoTemp.delete();
+      }
+
+      return registrosNuvem;
+    } catch (e) {
+      debugPrint("Erro ao baixar registros da nuvem: $e");
+      return null;
+    }
+  }
+
+  /// Executa o algoritmo de resolução de conflitos (Merge) baseado no timestamp 'data_atualizacao'
+  static Future<bool> _mesclarRegistros(
+    Database dbLocal,
+    List<Map<String, dynamic>> registrosNuvem,
+  ) async {
+    List<Map<String, dynamic>> registrosLocaisAtuais = await DBHelper.queryAllParaSincronizacao();
+    Map<int, Map<String, dynamic>> mapaLocais = {
+      for (var reg in registrosLocaisAtuais) reg['id'] as int: reg,
+    };
+
+    bool houveAlteracoes = false;
+
+    for (var regNuvem in registrosNuvem) {
+      int idNuvem = regNuvem['id'];
+      int timestampNuvem = regNuvem['data_atualizacao'] ?? 0;
+
+      if (mapaLocais.containsKey(idNuvem)) {
+        var regLocal = mapaLocais[idNuvem]!;
+        int timestampLocal = regLocal['data_atualizacao'] ?? 0;
+
+        if (timestampNuvem > timestampLocal) {
+          await dbLocal.update(
+            'aniversariantes',
+            regNuvem,
+            where: 'id = ?',
+            whereArgs: [idNuvem],
+          );
+          houveAlteracoes = true;
+        }
+        mapaLocais.remove(idNuvem);
+      } else {
+        await dbLocal.insert('aniversariantes', regNuvem);
+        houveAlteracoes = true;
+      }
+    }
+
+    return mapaLocais.isNotEmpty || houveAlteracoes;
+  }
+
+  /// Envia fotos de registros locais que ainda não possuem identificador no Google Drive
+  static Future<void> _sincronizarUploadFotosLocais(Database dbLocal) async {
+    List<Map<String, dynamic>> registrosSemFotoNoDrive = await dbLocal.query(
+      'aniversariantes',
+      where: '(drive_file_id_foto IS NULL OR drive_file_id_foto = "") AND caminho_foto IS NOT NULL AND caminho_foto != "" AND excluido = 0',
+    );
+
+    for (var reg in registrosSemFotoNoDrive) {
+      String caminho = reg['caminho_foto'];
+      if (File(caminho).existsSync()) {
+        String? idDrive = await fazerUploadImagem(File(caminho));
+        if (idDrive != null) {
+          await dbLocal.update(
+            'aniversariantes',
+            {'drive_file_id_foto': idDrive},
+            where: 'id = ?',
+            whereArgs: [reg['id']],
+          );
+        }
+      }
+    }
+  }
+
+  /// Baixa fotos do Google Drive para registros locais cujos arquivos ainda não existem no dispositivo
+  static Future<void> _sincronizarDownloadFotosRemotas(Database dbLocal) async {
+    List<Map<String, dynamic>> registrosComFotoRemota = await dbLocal.query(
+      'aniversariantes',
+      where: 'drive_file_id_foto IS NOT NULL AND drive_file_id_foto != "" AND excluido = 0',
+    );
+
+    for (var reg in registrosComFotoRemota) {
+      String? caminhoLocal = reg['caminho_foto'];
+      String driveId = reg['drive_file_id_foto'];
+
+      bool precisaBaixar = caminhoLocal == null || caminhoLocal.isEmpty || !File(caminhoLocal).existsSync();
+
+      if (precisaBaixar) {
+        String? novoCaminhoLocal = await baixarEPeristirImagemLocalmente(driveId);
+        if (novoCaminhoLocal != null) {
+          await dbLocal.update(
+            'aniversariantes',
+            {'caminho_foto': novoCaminhoLocal},
+            where: 'id = ?',
+            whereArgs: [reg['id']],
+          );
+        }
+      }
+    }
+  }
+
+  /// Sincronização Inteligente Local-First: Registros primeiro, depois tratamento de mídias
+  static Future<bool> sincronizarComDrive() async {
+    try {
+      final driveApi = await _obterDriveApi();
+      if (driveApi == null) return false;
+
       Database dbLocal = await DBHelper.database;
 
-      if (listaArquivos.files != null && listaArquivos.files!.isNotEmpty) {
-        String fileId = listaArquivos.files!.first.id!;
-        drive.Media arquivoDrive = await driveApi.files.get(
-          fileId,
-          downloadOptions: drive.DownloadOptions.fullMedia,
-        ) as drive.Media;
-
-        var databasesPath = await getDatabasesPath();
-        String tempPath = p.join(databasesPath, 'temp_nuvem.db');
-        var arquivoTemp = File(tempPath);
-
-        List<int> dataBytes = [];
-        await for (var chunk in arquivoDrive.stream) {
-          dataBytes.addAll(chunk);
-        }
-        await arquivoTemp.writeAsBytes(dataBytes);
-
-        Database dbNuvens = await openDatabase(tempPath);
-        List<Map<String, dynamic>> registrosNuvem = await dbNuvens.query('aniversariantes');
-        await dbNuvens.close();
-
-        if (await arquivoTemp.exists()) {
-          await arquivoTemp.delete();
-        }
-
-        List<Map<String, dynamic>> registrosLocaisAtuais = await DBHelper.queryAllParaSincronizacao();
-        Map<int, Map<String, dynamic>> mapaLocais = {
-          for (var reg in registrosLocaisAtuais) reg['id'] as int: reg
-        };
-
-        bool houveAlteracoes = false;
-
-        for (var regNuvem in registrosNuvem) {
-          int idNuvem = regNuvem['id'];
-          int timestampNuvem = regNuvem['data_atualizacao'] ?? 0;
-
-          if (mapaLocais.containsKey(idNuvem)) {
-            var regLocal = mapaLocais[idNuvem]!;
-            int timestampLocal = regLocal['data_atualizacao'] ?? 0;
-
-            if (timestampNuvem > timestampLocal) {
-              await dbLocal.update(
-                'aniversariantes',
-                regNuvem,
-                where: 'id = ?',
-                whereArgs: [idNuvem],
-              );
-              houveAlteracoes = true;
-            }
-            mapaLocais.remove(idNuvem);
-          } else {
-            // Se veio da nuvem e tem ID de foto remota mas não tem caminho local, limpa o caminho provisoriamente para o Passo 2 baixar
-            await dbLocal.insert('aniversariantes', regNuvem);
-            houveAlteracoes = true;
-          }
-        }
-
-        if (mapaLocais.isNotEmpty || houveAlteracoes) {
+      // 1. Baixa e mescla registros
+      final registrosNuvem = await _baixarRegistrosRemotos(driveApi);
+      if (registrosNuvem != null) {
+        bool precisaUpload = await _mesclarRegistros(dbLocal, registrosNuvem);
+        if (precisaUpload) {
           await fazerUploadBackup();
         }
       } else {
-        // Se não há backup na nuvem ainda, envia o estado local atual
         await fazerUploadBackup();
       }
 
-      // 🔴 PASSO 2: SINCRONIZAÇÃO DAS IMAGENS (Após os registos estarem seguros)
-      // A) Envia fotos locais novas que ainda não têm ID no Drive
-      List<Map<String, dynamic>> registrosLocaisParaUploadFoto = await dbLocal.query(
-        'aniversariantes',
-        where: '(drive_file_id_foto IS NULL OR drive_file_id_foto = "") AND caminho_foto IS NOT NULL AND caminho_foto != "" AND excluido = 0',
-      );
+      // 2. Sincroniza fotos pendentes (Upload e Download)
+      await _sincronizarUploadFotosLocais(dbLocal);
+      await _sincronizarDownloadFotosRemotas(dbLocal);
 
-      for (var reg in registrosLocaisParaUploadFoto) {
-        String caminho = reg['caminho_foto'];
-        if (File(caminho).existsSync()) {
-          String? idDrive = await fazerUploadImagem(File(caminho));
-          if (idDrive != null) {
-            await dbLocal.update(
-              'aniversariantes',
-              {'drive_file_id_foto': idDrive},
-              where: 'id = ?',
-              whereArgs: [reg['id']],
-            );
-          }
-        }
-      }
-
-      // B) Baixa imagens remotas cujos ficheiros físicos ainda não existem no aparelho
-      List<Map<String, dynamic>> registrosLocaisParaBaixarFoto = await dbLocal.query(
-        'aniversariantes',
-        where: 'drive_file_id_foto IS NOT NULL AND drive_file_id_foto != "" AND excluido = 0',
-      );
-
-      for (var reg in registrosLocaisParaBaixarFoto) {
-        String? caminhoLocal = reg['caminho_foto'];
-        String driveId = reg['drive_file_id_foto'];
-
-        bool precisaBaixar = caminhoLocal == null || caminhoLocal.isEmpty || !File(caminhoLocal).existsSync();
-
-        if (precisaBaixar) {
-          String? novoCaminhoLocal = await baixarEPeristirImagemLocalmente(driveId);
-          if (novoCaminhoLocal != null) {
-            await dbLocal.update(
-              'aniversariantes',
-              {'caminho_foto': novoCaminhoLocal},
-              where: 'id = ?',
-              whereArgs: [reg['id']],
-            );
-          }
-        }
-      }
-
-      // Atualiza o backup final com os caminhos locais e IDs de fotos consolidados
+      // 3. Atualiza backup final consolidado
       await fazerUploadBackup();
       return true;
     } catch (e) {
-      print("Erro na sincronização inteligente com imagens: $e");
+      debugPrint("Erro na sincronização com o Google Drive: $e");
       return false;
+    }
+  }
+
+  /// Sincroniza automaticamente apenas na primeira abertura do dia
+  static Future<bool> sincronizarSeNecessarioHoje() async {
+    try {
+      if (!await NetworkService.temConexaoInternet()) return false;
+
+      final diretorio = await getApplicationDocumentsDirectory();
+      final arquivo = File(p.join(diretorio.path, _nomeArquivoUltimaSync));
+
+      final hojeStr = DateTime.now().toIso8601String().substring(0, 10);
+
+      String? ultimaDataSync;
+      if (await arquivo.exists()) {
+        ultimaDataSync = await arquivo.readAsString();
+      }
+
+      if (ultimaDataSync != hojeStr) {
+        bool sucesso = await sincronizarComDrive();
+        if (sucesso) {
+          await arquivo.writeAsString(hojeStr);
+          return true;
+        }
+      }
+      return false;
+    } catch (e) {
+      debugPrint("Erro ao verificar sincronização diária: $e");
+      return false;
+    }
+  }
+
+  /// Registra que a sincronização manual foi concluída na data de hoje
+  static Future<void> marcarSincronizacaoFeitaHoje() async {
+    try {
+      final diretorio = await getApplicationDocumentsDirectory();
+      final arquivo = File(p.join(diretorio.path, _nomeArquivoUltimaSync));
+      final hojeStr = DateTime.now().toIso8601String().substring(0, 10);
+      await arquivo.writeAsString(hojeStr);
+    } catch (e) {
+      debugPrint("Erro ao marcar sincronização: $e");
+    }
+  }
+
+  /// Limpa o arquivo de controle de sincronização ao sair da conta
+  static Future<void> limparControleSincronizacao() async {
+    try {
+      final diretorio = await getApplicationDocumentsDirectory();
+      final arquivo = File(p.join(diretorio.path, _nomeArquivoUltimaSync));
+      if (await arquivo.exists()) {
+        await arquivo.delete();
+      }
+    } catch (e) {
+      debugPrint("Erro ao limpar controle de sincronização: $e");
     }
   }
 }

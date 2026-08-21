@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 
@@ -62,6 +63,7 @@ class DBHelper {
     );
   }
 
+  /// Fecha as conexões do SQLite e remove o arquivo físico do banco no dispositivo
   static Future<void> fecharEApagarBanco() async {
     if (_db != null) {
       if (_db!.isOpen) {
@@ -78,23 +80,25 @@ class DBHelper {
         await dbFile.delete();
       }
     } catch (e) {
-      print("Erro ao apagar o arquivo do banco: $e");
+      debugPrint("Erro ao apagar o arquivo do banco: $e");
     }
   }
 
   static Future<int> insert(Map<String, dynamic> row) async {
     Database db = await database;
-    row['data_atualizacao'] = DateTime.now().millisecondsSinceEpoch;
-    row['excluido'] = 0;
-    return await db.insert('aniversariantes', row);
+    final Map<String, dynamic> dados = Map<String, dynamic>.from(row);
+    dados['data_atualizacao'] = DateTime.now().millisecondsSinceEpoch;
+    dados['excluido'] = 0;
+    return await db.insert('aniversariantes', dados);
   }
 
   static Future<int> update(Map<String, dynamic> row, int id) async {
     Database db = await database;
-    row['data_atualizacao'] = DateTime.now().millisecondsSinceEpoch;
+    final Map<String, dynamic> dados = Map<String, dynamic>.from(row);
+    dados['data_atualizacao'] = DateTime.now().millisecondsSinceEpoch;
     return await db.update(
       'aniversariantes',
-      row,
+      dados,
       where: 'id = ?',
       whereArgs: [id],
     );

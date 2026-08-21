@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../services/drive_service.dart';
+import '../services/network_service.dart';
 import 'home_page.dart';
 
 class LoginPage extends StatefulWidget {
@@ -14,28 +15,9 @@ class _LoginPageState extends State<LoginPage> {
   bool _carregando = false;
   String _mensagemStatus = '';
 
-  @override
-  void initState() {
-    super.initState();
-    _verificarLoginExistente();
-  }
-
-  /// Responsabilidade 1: Verificar se existe sessão ativa (Login Silencioso)
-  Future<void> _verificarLoginExistente() async {
-    _atualizarStatus(carregando: true, mensagem: 'Verificando sessão...');
-
-    final conta = await AuthService.tentarLoginSilencioso();
-
-    if (conta != null && mounted) {
-      await _sincronizarESeguir();
-    } else if (mounted) {
-      _atualizarStatus(carregando: false);
-    }
-  }
-
-  /// Responsabilidade 2: Processar a autenticação interativa com o Google
+  /// Processa a autenticação interativa com a conta Google
   Future<void> _realizarLogin() async {
-    final temInternet = await AuthService.temConexaoInternet();
+    final temInternet = await NetworkService.temConexaoInternet();
     if (!temInternet) {
       _exibirSnackBar('Sem conexão com a internet para realizar o login.');
       return;
@@ -53,10 +35,10 @@ class _LoginPageState extends State<LoginPage> {
         await _sincronizarESeguir();
       } else if (mounted) {
         _atualizarStatus(carregando: false);
-        _exibirSnackBar('Login cancelado pelo utilizador.');
+        _exibirSnackBar('Login cancelado pelo usuário.');
       }
     } catch (e) {
-      // debugPrint("Erro no login: $e");
+      debugPrint("Erro no login: $e");
       if (mounted) {
         _atualizarStatus(carregando: false);
         _exibirSnackBar('Erro ao realizar login: $e');
@@ -64,7 +46,7 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  /// Responsabilidade 3: Orquestrar a sincronização do Drive antes da entrada
+  /// Realiza a sincronização inicial do Drive antes de entrar na tela principal
   Future<void> _sincronizarESeguir() async {
     _atualizarStatus(
       carregando: true,
@@ -72,11 +54,12 @@ class _LoginPageState extends State<LoginPage> {
     );
 
     try {
-      if (await AuthService.temConexaoInternet()) {
+      if (await NetworkService.temConexaoInternet()) {
         await DriveService.sincronizarComDrive();
+        await DriveService.marcarSincronizacaoFeitaHoje();
       }
     } catch (e) {
-      // debugPrint("Erro na sincronização inicial: $e");
+      debugPrint("Erro na sincronização inicial: $e");
     }
 
     if (mounted) {
@@ -84,7 +67,6 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  /// Responsabilidade 4: Tratar a navegação de ecrãs
   void _navegarParaHome() {
     Navigator.pushReplacement(
       context,
@@ -92,7 +74,6 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
-  /// Responsabilidade 5: Utilitários de Interface (UI Helpers)
   void _atualizarStatus({required bool carregando, String mensagem = ''}) {
     if (mounted) {
       setState(() {
