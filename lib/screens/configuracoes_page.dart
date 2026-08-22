@@ -187,7 +187,7 @@ class ConfiguracoesPage extends StatelessWidget {
           const ListTile(
             leading: Icon(Icons.info_outline),
             title: Text('Versão do Aplicativo'),
-            subtitle: Text('1.0.7'),
+            subtitle: Text('1.1.0'),
           ),
         ],
       ),

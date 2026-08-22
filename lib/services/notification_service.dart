@@ -14,7 +14,7 @@ class NotificationService {
   static const String channelDescription = 'Notificações de lembrete de aniversariantes';
 
   /// Horários de agendamento de 4 em 4 horas iniciando às 00:00 (total de 6 notificações no dia)
-  static const List<int> horariosLembrete = [0,2,3, 4, 8, 12, 16, 20, 21, 22, 23];
+  static const List<int> horariosLembrete = [0, 4, 8, 12, 16, 20];
 
   /// Inicializa o plugin de notificações, configurações de plataforma e fuso horário local
   static Future<void> init() async {
