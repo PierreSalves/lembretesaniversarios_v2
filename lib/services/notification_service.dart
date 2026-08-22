@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
@@ -8,10 +9,14 @@ class NotificationService {
   static final FlutterLocalNotificationsPlugin _notificationsPlugin =
       FlutterLocalNotificationsPlugin();
 
-  /// Horários de agendamento de 4 em 4 horas iniciando às 00:00 (total de 6 notificações no dia)
-  static const List<int> horariosLembrete = [0, 4, 8, 12, 16, 20];
+  static const String channelId = 'lembretes_aniversario_channel';
+  static const String channelName = 'Lembretes de Aniversários';
+  static const String channelDescription = 'Notificações de lembrete de aniversariantes';
 
-  /// Inicializa o plugin de notificações e configurações de plataforma
+  /// Horários de agendamento de 4 em 4 horas iniciando às 00:00 (total de 6 notificações no dia)
+  static const List<int> horariosLembrete = [0,2,3, 4, 8, 12, 16, 20, 21, 22, 23];
+
+  /// Inicializa o plugin de notificações, configurações de plataforma e fuso horário local
   static Future<void> init() async {
     tz.initializeTimeZones();
 
@@ -30,28 +35,41 @@ class NotificationService {
                 AndroidFlutterLocalNotificationsPlugin
               >();
 
-      await androidSolicitarPermissao(androidImplementation);
+      if (androidImplementation != null) {
+        await _criarCanalNotificacao(androidImplementation);
+        await androidImplementation.requestNotificationsPermission();
+      }
     }
   }
 
-  /// Solicita permissão de notificação no Android 13+
-  static Future<void> androidSolicitarPermissao(
-    AndroidFlutterLocalNotificationsPlugin? androidImplementation,
+  /// Cria explicitamente o canal de notificação com prioridade máxima e som no Android
+  static Future<void> _criarCanalNotificacao(
+    AndroidFlutterLocalNotificationsPlugin androidImplementation,
   ) async {
-    if (androidImplementation != null) {
-      await androidImplementation.requestNotificationsPermission();
-    }
+    const AndroidNotificationChannel channel = AndroidNotificationChannel(
+      channelId,
+      channelName,
+      description: channelDescription,
+      importance: Importance.max,
+      playSound: true,
+      enableVibration: true,
+    );
+
+    await androidImplementation.createNotificationChannel(channel);
   }
 
-  /// Cria os detalhes de configuração do canal de notificação no Android
+  /// Cria os detalhes de configuração da notificação no Android
   static NotificationDetails _obterNotificationDetails() {
     const AndroidNotificationDetails androidDetails =
         AndroidNotificationDetails(
-          'lembretes_aniversario_channel',
-          'Lembretes de Aniversários',
-          channelDescription: 'Notificações de lembrete de aniversariantes',
+          channelId,
+          channelName,
+          channelDescription: channelDescription,
           importance: Importance.max,
           priority: Priority.high,
+          playSound: true,
+          enableVibration: true,
+          icon: '@drawable/ic_notif',
         );
 
     return const NotificationDetails(android: androidDetails);
@@ -89,15 +107,14 @@ class NotificationService {
 
     for (int i = 0; i < horariosLembrete.length; i++) {
       final hora = horariosLembrete[i];
-      final dataNotificacao = DateTime(
+      final tzData = tz.TZDateTime(
+        tz.local,
         dataAniversario.year,
         dataAniversario.month,
         dataAniversario.day,
         hora,
         0,
       );
-
-      final tzData = tz.TZDateTime.from(dataNotificacao, tz.local);
 
       // Agenda apenas se o horário for futuro
       if (tzData.isAfter(tz.TZDateTime.now(tz.local))) {
@@ -130,5 +147,16 @@ class NotificationService {
         mes: aniversariante.mes,
       );
     }
+  }
+
+  /// Dispara uma notificação imediata de teste para validação de som e pop-up
+  static Future<void> enviarNotificacaoTeste() async {
+    final notificationDetails = _obterNotificationDetails();
+    await _notificationsPlugin.show(
+      id: 999999,
+      title: '🎉 Teste de Notificação',
+      body: 'As notificações estão funcionando perfeitamente no seu aparelho!',
+      notificationDetails: notificationDetails,
+    );
   }
 }

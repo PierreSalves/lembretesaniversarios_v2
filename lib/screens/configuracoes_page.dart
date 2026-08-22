@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
+import '../services/notification_service.dart';
 import 'login_page.dart';
 
 class ConfiguracoesPage extends StatelessWidget {
@@ -42,6 +43,29 @@ class ConfiguracoesPage extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  Future<void> _dispararNotificacaoTeste(BuildContext context) async {
+    try {
+      await NotificationService.enviarNotificacaoTeste();
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Notificação de teste enviada! Verifique sua barra de status.'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erro ao disparar teste: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -130,7 +154,27 @@ class ConfiguracoesPage extends StatelessWidget {
             ),
             onTap: () => _confirmarLogout(context),
           ),
-          const SizedBox(height: 32),
+          // const SizedBox(height: 24),
+          // const Text(
+          //   'Notificações e Lembretes',
+          //   style: TextStyle(
+          //     fontSize: 14,
+          //     fontWeight: FontWeight.bold,
+          //     color: Colors.blueGrey,
+          //   ),
+          // ),
+          // const SizedBox(height: 8),
+          // ListTile(
+          //   leading: const Icon(Icons.notifications_active, color: Colors.orange),
+          //   title: const Text(
+          //     'Testar Notificação Imediata',
+          //     style: TextStyle(fontWeight: FontWeight.bold),
+          //   ),
+          //   subtitle: const Text('Dispara um alerta de teste agora com som e pop-up'),
+          //   trailing: const Icon(Icons.send),
+          //   onTap: () => _dispararNotificacaoTeste(context),
+          // ),
+          const SizedBox(height: 24),
           const Text(
             'Sobre o App',
             style: TextStyle(
@@ -143,7 +187,7 @@ class ConfiguracoesPage extends StatelessWidget {
           const ListTile(
             leading: Icon(Icons.info_outline),
             title: Text('Versão do Aplicativo'),
-            subtitle: Text('1.0.6'),
+            subtitle: Text('1.0.7'),
           ),
         ],
       ),

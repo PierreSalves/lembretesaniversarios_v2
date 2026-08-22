@@ -67,10 +67,13 @@ void callbackDispatcher() {
 }
 
 class WorkmanagerService {
-  /// Inicializa o WorkManager e agenda a tarefa periódica para rodar a cada 24h na madrugada
+  /// Inicializa o WorkManager, agenda os registros existentes imediatamente e registra o job periódico de 24h
   static Future<void> inicializar() async {
     try {
       await Workmanager().initialize(callbackDispatcher);
+
+      // Garante que todos os aniversariantes já salvos no banco sejam agendados imediatamente na abertura
+      await executarVarreduraEAgendamento30Dias();
 
       final delayInicial = calcularDelayParaProximaMadrugada(horaAlvo: 3);
 
@@ -86,7 +89,7 @@ class WorkmanagerService {
       );
 
       debugPrint(
-        "⏰ WorkManager configurado com sucesso! Primeira execução em ${delayInicial.inHours}h ${delayInicial.inMinutes % 60}m (03:00 da madrugada) e repetição a cada 24h.",
+        "⏰ WorkManager configurado! Primeira execução noturna em ${delayInicial.inHours}h ${delayInicial.inMinutes % 60}m (03:00 da madrugada) e repetição a cada 24h.",
       );
     } catch (e) {
       debugPrint("❌ Erro ao inicializar WorkManager: $e");
